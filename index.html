@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1b120c">
+<title>Dust Rail — on-rails shooter prototype</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="src/style.css">
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
+</head>
+<body>
+<div id="frame">
+  <canvas id="gl"></canvas>
+  <canvas id="overlay"></canvas>
+
+  <div id="hud" class="layout-bottom">
+    <div id="top">
+      <div id="hpWrap">
+        <div id="hpBar"><div id="hpGhost"></div><div id="hpFill"></div></div>
+        <div id="hpText">100</div>
+      </div>
+      <div id="stage"><div id="stageName"></div><div id="stageProg"></div></div>
+      <div id="scoreWrap"><div id="score">0</div><div id="combo"></div></div>
+      <button id="gear" class="ui" aria-label="Settings">&#9881;</button>
+    </div>
+
+    <div id="banner"></div>
+
+    <div id="weaponInfo">
+      <div id="wName"></div>
+      <button id="scheme" class="ui"></button>
+      <div id="ammo"><span id="ammoNum">0</span><span id="ammoMax">/0</span></div>
+      <div id="reloadBar"><div></div></div>
+    </div>
+    <div id="weapons"></div>
+
+    <button class="ab ui" id="abCover" data-ab="cover"><span class="cd"></span><span class="ic"></span><span class="lb">COVER</span></button>
+    <button class="ab ui" id="abGrenade" data-ab="grenade"><span class="cd"></span><span class="ic"></span><span class="lb">NADE</span><span class="ch"></span></button>
+    <button class="ab ui" id="abFocus" data-ab="focus"><span class="cd"></span><span class="ic"></span><span class="lb">FOCUS</span></button>
+    <button class="ab ui" id="abMedkit" data-ab="medkit"><span class="cd"></span><span class="ic"></span><span class="lb">HEAL</span><span class="ch"></span></button>
+  </div>
+
+  <div id="start" class="screen">
+    <div class="card">
+      <h1>DUST RAIL</h1>
+      <p class="sub">on-rails shooter &middot; feel prototype</p>
+      <button class="big ui" id="btnRun">START RUN</button>
+      <button class="big alt ui" id="btnRange">SHOOTING RANGE</button>
+      <ul class="tips">
+        <li>Hold your phone in <b>portrait</b>, then rotate it to compare against landscape.</li>
+        <li>Tap the <b>scheme chip</b> above your ammo to cycle control schemes for the current gun.</li>
+        <li>&#9881; opens the test bench: telegraph layers, juice, HUD layouts, aim assist, overlays, stats.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div id="end" class="screen hidden">
+    <div class="card">
+      <h1 id="endTitle">RUN COMPLETE</h1>
+      <div id="endStats"></div>
+      <button class="big ui" id="btnRetry">RETRY ENCOUNTER</button>
+      <button class="big alt ui" id="btnRestart">RESTART RUN</button>
+      <button class="big alt ui" id="btnCopy">COPY STATS JSON</button>
+    </div>
+  </div>
+</div>
+
+<div id="panel" class="hidden">
+  <div id="panelHead"><b>TEST BENCH</b><button id="panelClose" class="ui">&times;</button></div>
+  <div id="panelBody"></div>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
