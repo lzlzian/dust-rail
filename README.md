@@ -6,6 +6,10 @@ Three.js r186 is vendored, there's no build step, and all audio is synthesized a
 
 ## Run it
 
+**Live build:** https://lzlzian.github.io/dust-rail/. Open it on any phone. It's HTTPS, so iOS will also allow the gyro permission prompt. Pushing to `main` redeploys it.
+
+Locally:
+
 ```
 node serve.mjs
 ```
