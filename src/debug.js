@@ -28,24 +28,26 @@ function sections(hooks) {
       ],
     },
     {
-      title: '1b · LOOKING AROUND', q: 'Portrait only shows a narrow slice side-to-side, so the rail camera can turn. Auto-frame steers toward threats (charging enemies and projectiles count extra). Edge push turns while a finger or the reticle is held near the left/right edge. On desktop, A/D or the arrow keys pan.',
+      title: '1b · LOOKING AROUND', q: 'Portrait only shows about ±30° side to side. Arcade beats (default) split each stop into camera angles: the front, then left/right flank sub-encounters. The camera pans for you at each lull, after a short cue. Compare with the auto-frame director camera, or manual only. Edge push, A/D or arrows, and gyro can peek in any mode; in beats mode the view springs back.',
       items: [
-        chk('look.auto', 'Auto-frame (director camera)'),
+        sel('look.mode', 'Camera', [['beats', 'Arcade beats (scripted pans)'], ['auto', 'Auto-frame (director)'], ['free', 'Manual only']]),
+        rng('look.panSpeed', 'Beat pan speed', 30, 200, 5, v => v + '°/s'),
+        rng('look.cueTime', 'Cue before a beat pan', 0, 1.2, 0.05, v => Math.round(v * 1000) + 'ms'),
         rng('look.autoSpeed', 'Auto-frame speed', 0.2, 3, 0.1, v => v.toFixed(1) + 'x'),
-        rng('look.autoDelay', 'Auto-frame waits after manual pan', 0, 4, 0.1, v => v.toFixed(1) + 's'),
+        rng('look.autoDelay', 'Snap back after a manual peek', 0, 4, 0.1, v => v.toFixed(1) + 's'),
         chk('look.edge', 'Edge push'),
         rng('look.edgeZone', 'Edge zone width', 0.05, 0.3, 0.01, v => Math.round(v * 100) + '%'),
         rng('look.edgeSpeed', 'Edge push speed', 20, 180, 5, v => v + '°/s'),
         rng('look.range', 'Max turn from rail', 0, 90, 1, v => '±' + v + '°'),
         chk('hud.offscreenEnemies', 'Arrows for off-screen enemies'),
-        chk('look.gyro', 'Gyro look (turns off auto-frame)'),
+        chk('look.gyro', 'Gyro look'),
         rng('look.gyroSens', 'Gyro sensitivity', 0.2, 3, 0.1, v => v.toFixed(1) + 'x'),
         chk('look.gyroInvert', 'Invert gyro'),
         { type: 'buttons', buttons: [['Enable gyro (asks permission on iOS)', () => hooks.gyro()]] },
       ],
     },
     {
-      title: '2 · GUN CONTROLS', q: 'Tap the scheme chip in the HUD to cycle schemes in-game. Compare the hold-to-spray "Trackpad" scheme with Hold+Sweep, Paint, Tap-burst and Auto-trigger.',
+      title: '2 · GUN CONTROLS', q: 'Tap the scheme chip in the HUD to cycle schemes in-game. Trackpad (Nikke-style drag reticle) works on every gun. With it, SMG/AR fire while held; revolver, shotgun and sniper aim while held and fire on release, each in its own way (see below).',
       items: [
         ...WEAPONS.map(w => sel('schemes.' + w.id, w.name, w.schemes.map(s => [s, SCHEMES[s].name]))),
         { type: 'html', html: Object.values(SCHEMES).map(s => `<b>${s.name}</b>: ${s.desc}`).join('<br>') },
@@ -53,6 +55,10 @@ function sections(hooks) {
         rng('recoilClimb', 'Recoil climb (SMG/AR)', 0, 3, 0.1, v => v.toFixed(1) + 'x'),
         sel('spreadPattern', 'Spread pattern', [['center', 'Center-weighted'], ['uniform', 'Uniform disc']]),
         rng('sensitivity', 'Trackpad sensitivity', 0.5, 3, 0.05, v => v.toFixed(2) + 'x'),
+        chk('trackpadAim', 'Trackpad: revolver / shotgun / sniper hold to aim, release to fire'),
+        rng('deadeye.timeScale', 'Revolver dead-eye slow-mo', 0.2, 1, 0.05, v => (v >= 1 ? 'off' : v.toFixed(2) + 'x')),
+        rng('deadeye.markTime', 'Dead-eye mark dwell', 0, 0.3, 0.01, v => Math.round(v * 1000) + 'ms'),
+        rng('deadeye.max', 'Dead-eye max hold', 0.5, 5, 0.1, v => v.toFixed(1) + 's'),
         rng('aimAssist', 'Aim assist radius', 0, 90, 1, v => v + 'px'),
         rng('autoFireDelay', 'Auto-trigger dwell', 0, 0.5, 0.01, v => Math.round(v * 1000) + 'ms'),
         rng('scopeSensitivity', 'Scope drag sensitivity', 0.15, 1.5, 0.05, v => v.toFixed(2) + 'x'),
@@ -221,7 +227,8 @@ export function statsJson() {
 }
 
 export function spawnAhead(type, rig) {
-  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(rig.quat); fwd.y = 0; fwd.normalize();
+  // spawn where the camera is looking (it may be turned toward a flank), not down the rail
+  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(G.camera.quaternion); fwd.y = 0; fwd.normalize();
   const side = new THREE.Vector3(-fwd.z, 0, fwd.x);
   const base = rig.pos.clone().addScaledVector(fwd, type === 'heavy' ? 18 : 13).addScaledVector(side, (Math.random() - 0.5) * 8);
   base.y = type === 'drone' ? 6 + Math.random() * 3 : 0;

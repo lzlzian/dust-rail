@@ -147,6 +147,7 @@ function loop(t) {
     let scale = settings.game.gameSpeed;
     if (G.time.slowmo > 0) { G.time.slowmo -= rdt; scale *= G.time.slowmoScale; }
     if (G.time.focus > 0) scale *= 0.35;
+    if (G.time.deadeye) scale *= settings.deadeye.timeScale;
     let gdt = rdt * scale, pdt = G.time.focus > 0 ? rdt * settings.game.gameSpeed : gdt;
     if (G.time.hitstop > 0) { G.time.hitstop -= rdt; gdt = 0; pdt = 0; }
     G.time.now += gdt;

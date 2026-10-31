@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { G, rand, clamp, lerp } from './state.js';
 import { WEAPONS, settings, J } from './config.js';
 import { toon, outline } from './world.js';
-import { pick, castWorld, castTargets, screenRay, project } from './combat.js';
+import { pick, castWorld, castTargets, screenRay, project, spreadNow } from './combat.js';
 import * as fx from './fx.js';
 import { sfx, haptic } from './audio.js';
 import { popDamage, popText, hitMarker } from './hud.js';
@@ -138,7 +138,7 @@ export function startReload() {
 const RELOAD_JOLT = { magOut: [0.02, -0.15, 0], magIn: [-0.03, 0.55, 0], rack: [-0.06, 0.25, 0.15], cylOpen: [0, 0, -0.4], speedload: [-0.02, 0.3, 0], cylClose: [0, 0.2, 0.6], shell: [-0.015, 0.2, 0], pump: [-0.07, 0.35, 0], boltUp: [0, 0, -0.2], boltBack: [-0.04, 0.1, 0], boltFwd: [0.03, 0.25, 0], boltDown: [0, 0.15, 0.25], ready: [0, 0.18, 0] };
 const RELOAD_BUZZ = { magIn: [14], rack: [10, 30, 18], cylClose: [16], shell: [8], pump: [12, 40, 20], boltFwd: [14], ready: [6] };
 function reloadBeat(name) {
-  sfx.reload(name);
+  sfx.reload(name, cur().id);
   const j = RELOAD_JOLT[name], m = J('recoil');
   if (j && m) { VM.rec.vz += j[0] * 14 * m; VM.rec.vrx += j[1] * 6 * m; VM.rec.vry += j[2] * 6 * m; }
   if (RELOAD_BUZZ[name]) haptic(RELOAD_BUZZ[name]);
@@ -193,14 +193,15 @@ export function fireAt(x, y, target = null) {
     const ay = y - G.aim.climb;
     base = pick(x, ay, w.id === 'sniper' && G.aim.scoped ? 6 : settings.aimAssist);
   }
-  const spread = target ? 0.25 : w.spread + G.aim.bloom;
+  const spread = target ? 0.25 : spreadNow(w);
+  const reach = w.choke && G.aim.choke != null ? lerp(1, w.choke.reach, G.aim.choke) : 1; // a tight pattern carries further
   const mw = muzzleWorld();
   const perEnemy = new Map();
   let anyHit = false, anyCrit = false, anyKill = false, aimPoint = null;
 
   for (let p = 0; p < w.pellets; p++) {
     const d = coneDir(base.d, spread);
-    const res = resolveShot(base.o, d, w, perEnemy);
+    const res = resolveShot(base.o, d, w, perEnemy, reach);
     anyHit ||= res.hit; anyCrit ||= res.crit; anyKill ||= res.kill;
     if (!aimPoint || res.hit) aimPoint = res.point;
     if (p < 5 || Math.random() < 0.5) fx.tracer(mw, res.point, w.j.tracerColor, w.j.tracer);
@@ -224,7 +225,7 @@ export function fireAt(x, y, target = null) {
   return true;
 }
 
-function resolveShot(o, d, w, perEnemy) {
+function resolveShot(o, d, w, perEnemy, reach = 1) {
   const world = castWorld(o, d, w.range);
   const hits = castTargets(o, d, world.t);
   const out = { hit: false, crit: false, kill: false, point: null };
@@ -242,7 +243,7 @@ function resolveShot(o, d, w, perEnemy) {
     const point = o.clone().addScaledVector(d, h.t);
     const crit = hb.tag === 'head' || !!hb.weak;
     let dmg = w.dmg * (hb.tag === 'head' ? w.crit : hb.mult);
-    if (w.falloff) dmg *= lerp(1, 0.35, clamp((h.t - w.falloff[0]) / (w.falloff[1] - w.falloff[0]), 0, 1));
+    if (w.falloff) dmg *= lerp(1, 0.35, clamp((h.t - w.falloff[0] * reach) / ((w.falloff[1] - w.falloff[0]) * reach), 0, 1));
     dmg = Math.max(1, Math.round(dmg));
     const killed = e.damage(dmg, hb, point, d, w);
     const st = G.stats.weapons[w.id]; st.dmg += dmg;
@@ -366,7 +367,8 @@ export function updateWeapons(pdt, rdt) {
     else {
       let t = W.volley.shift();
       if (t && !(t.proj ? t.proj.alive : t.enemy.alive)) t = W.volley.find(o => (o.proj ? o.proj.alive : o.enemy.alive));
-      if (t) { fireAt(0, 0, t); W.cool = 60 / (w.rpm * 1.3); }
+      // the revolver fans its hammer through a dead-eye volley; paint volleys run a little over the gun's rate
+      if (t) { fireAt(0, 0, t); W.cool = w.fan ?? 60 / (w.rpm * 1.3); }
       G.aim.tags.splice(0, 1);
       if (!W.volley.length) { W.volley = null; G.aim.tags.length = 0; }
     }

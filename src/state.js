@@ -12,6 +12,7 @@ export const G = {
   paused: false,
   score: 0, combo: 0, comboT: 0,
   attackTokens: 0,
+  cue: null,               // upcoming beat pan { dir, label, t }, drawn by the HUD
   aim: { x: 0, y: 0, visible: false, bloom: 0, climb: 0, scoped: false, scopeT: 0, autoT: 0, tags: [] },
   stats: null,
 };

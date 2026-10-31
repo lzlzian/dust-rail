@@ -23,7 +23,7 @@ node serve.mjs
 - Android Chrome goes fullscreen on START and supports haptics. iOS Safari has no `navigator.vibrate`; use Share → *Add to Home Screen* for fullscreen.
 - Desktop keys: `1-5` guns, `R` reload, `Tab` cycle scheme, `Space` hold cover, `Q` grenade, `E` focus, `F` heal, `A`/`D` or arrows to pan.
 
-**START RUN** plays 5 on-rails encounters ending in a boss. **SHOOTING RANGE** is endless and mixes every enemy type, which makes it the place for A/B testing guns and schemes.
+**START RUN** plays 5 on-rails encounters ending in a boss. Each stop is split into arcade camera **beats**: the front, then left/right flank sub-encounters. When a beat is cleared (the lull), a cue points to the next angle and the camera pans there; it then returns to the front, crosses to the other flank, or moves on down the rail. **SHOOTING RANGE** is endless and mixes every enemy type, which makes it the place for A/B testing guns and schemes.
 
 ## Where each question lives
 
@@ -31,11 +31,11 @@ All of these are in **⚙ Test bench**. Settings persist in localStorage, and op
 
 | # | Question | What to try |
 |---|----------|-------------|
-| 1 | Portrait framing | Rotate the phone, or switch the simulated frame. Toggle **target px** to see real on-screen sizes of heads and bodies. Change *FOV fit* and *hFOV*. **1b · Looking around**: auto-frame (director camera), edge push (hold a finger or the reticle near a side edge), gyro, turn range, and arrows for off-screen enemies. |
-| 2 | Gun controls | Tap the **scheme chip** above the ammo counter to cycle schemes live. Auto weapons have 6 schemes; the old Western-Sniper hold-to-spray is **Trackpad**. Tune reticle offset, assist and sensitivity. |
+| 1 | Portrait framing | Rotate the phone, or switch the simulated frame. Toggle **target px** to see real on-screen sizes of heads and bodies. Change *FOV fit* and *hFOV*. **1b · Looking around**: *Camera* = arcade beats (default), auto-frame director, or manual only. Also pan speed, the cue before a pan, edge push, gyro, and arrows for off-screen enemies. |
+| 2 | Gun controls | Tap the **scheme chip** above the ammo counter to cycle schemes live. **Trackpad** (the Nikke-style drag reticle) is available on every gun. Tune reticle offset, assist and sensitivity. |
 | 3 | Shooting projectiles | Rockets, boss missiles, grenades and drone bolts can all be shot down. The bracket around each one is its true hit area. Tune *projectile hitbox size*, *assist bonus* and *speed*. |
 | 4 | Charge-up telegraphs | Heavies (blue cannon), snipers (red laser) and the boss beam. Turn layers off one at a time. Interrupt a charge by dealing damage; the glowing core counts double. Spawn buttons are in the panel. |
-| 5 | Juice | Drag master from 0 to 1, or isolate any of the 15 layers. Each gun has its own juice profile in `src/config.js`. |
+| 5 | Juice | Drag master from 0 to 1, or isolate any of the 15 layers. Each gun has its own juice profile in `src/config.js`, and its own reload foley in `src/foley.js` (`node tools/foley-check.mjs` renders every reload to WAV + a spectrogram PNG in `shots/foley/`). |
 | 6 | HUD real estate | Three layouts (bottom bar / thumb arc / side rails), button size, thumb-reach overlay (right / left / both). |
 
 **STATS** (in the panel and on the end screen) records accuracy and crits per gun, which schemes fired how many shots, projectile intercept %, charge interrupts vs. hits, and damage taken by source. **Copy stats JSON** after each playtester's run to compare schemes.
@@ -49,8 +49,18 @@ All of these are in **⚙ Test bench**. Settings persist in localStorage, and op
 | Hold & sweep | hold to fire at a reticle *offset above* the finger, drag to sweep | SMG |
 | Paint & release | drag over targets to tag them, release to unload a volley | SMG / AR alt |
 | Trackpad + auto-trigger | drag a persistent reticle; it fires when on target | accessibility / casual |
-| Trackpad spray | persistent reticle, hold = fire, drag = move (Western Sniper style) | baseline to beat |
+| Trackpad | persistent reticle, drag anywhere to move it relatively (Nikke style). SMG/AR: hold = fire. Revolver/shotgun/sniper: hold = aim, release = fire (below) | every gun |
 | Scope | press = zoom where you touched, drag = fine aim, release = fire | sniper |
+
+### Trackpad on the precision guns: hold to aim, release to fire, each in its own way
+
+| Gun | While held | Release | Its job |
+|-----|------------|---------|---------|
+| Sniper | scopes in on the reticle (3.5×, sway); drag = fine aim | one piercing shot; the reticle stays on that spot | long range, weak points, lines of enemies |
+| Revolver | **dead-eye**: time slows; sweep the reticle over targets, dwelling marks one round each (dwell longer to stack) | fans the hammer through every mark; a quick tap is one fast shot | clearing a group of weak enemies / rockets in one press |
+| Shotgun | **choke**: the pattern visibly tightens over 0.5 s (reticle ring shrinks, clicks when tight) | 9 pellets at that spread; tight patterns also lose less damage with range | tap = wide close blast, hold = mid-range slug |
+
+Bench (2 · Gun controls) can switch these back to hold-to-fire and tunes dead-eye slow-mo, mark dwell and max hold. Releasing while the pump or bolt is still cycling queues the shot.
 
 ## What the headless runs showed (not a substitute for thumbs on glass)
 
@@ -60,7 +70,7 @@ Measured in a 390×844 portrait viewport (iPhone 12–15 class):
 - **Portrait's tall view is an asset if you design for it.** Towers, rooftops, flyers and a *tall* boss fill the upper half that a flat corridor would leave as empty sky. The boss was scaled up 1.45× to use it.
 - **Landscape needs its own FOV fit and HUD.** Horizontal-fit FOV in landscape gives a 30° vertical slit, so the default is now *auto* (portrait: fixed hFOV; landscape: fixed vFOV 56°). The bottom-bar HUD takes ~15% of portrait height but ~33% of landscape height, and there the weapon strip covers enemies.
 - **Projectile hits at the lens must stay small.** A full-size explosion 1.6 m in front of the camera hid the whole screen. Player hits now use a small burst, and the vignette, shake and direction arc tell the player they were hit.
-- **Portrait only shows ±30° side to side** at hFOV 60°. Three of the five stops have spawns 27–60° off-center, so the camera now turns on top of the rail. Auto-frame weighs charging enemies, the boss, active shooters and incoming projectiles, and anything left off-screen gradually gains weight. You can still push the view manually. Either stage portrait encounters inside a ~50° wedge, or accept a moving camera; the bench lets you feel both (turn auto-frame and edge push off for a fixed camera).
+- **Portrait only shows ±30° side to side** at hFOV 60°. The encounters are now staged as arcade beats: every beat keeps its enemies inside ±22° of its camera angle (measured: all enemies land between 20% and 81% of the screen width), and wider set pieces become flank beats the camera pans to at a lull. The earlier director camera, which auto-framed threats as they appeared, is still in the bench for comparison.
 - **Telegraphs:** with all layers on, a charging heavy is unmissable even in a busy frame. The open question is which layers you can *remove*.
 
 ## Code map
@@ -76,7 +86,8 @@ src/projectiles.js shootable rockets/missiles/grenades/bolts, player grenade
 src/level.js       canyon built from primitives, encounters, rail motion, range
 src/hud.js         DOM HUD + overlay canvas (reticles, numbers, rings, markers)
 src/fx.js          pooled particles, tracers, decals, debris, camera trauma
-src/audio.js       synthesized SFX
+src/audio.js       synthesized SFX + foley playback
+src/foley.js       per-gun reload/pump/bolt foley, rendered sample by sample (hits, scrapes, springs, brass)
 src/debug.js       test bench panel + stats
 ```
 

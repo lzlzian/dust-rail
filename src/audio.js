@@ -1,7 +1,8 @@
 // Procedural WebAudio SFX: no asset files. Each gun is a layered recipe (crack + body + sub thump + reverb tail).
 import { settings, J } from './config.js';
+import { renderFoley, foleyBeats } from './foley.js';
 
-let ctx = null, master = null, dry = null, wet = null, noiseBuf = null;
+let ctx = null, master = null, dry = null, wet = null, noiseBuf = null, foleyBus = null;
 
 const GUNS = {
   revolver: { crack: 0.9, body: 1.0, lp: 3200, dur: 0.32, thump: 1.0, tf: 140, tail: 0.55, pitch: 1.0, mech: 'hammer' },
@@ -26,6 +27,52 @@ export function initAudio() {
   noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
   const d = noiseBuf.getChannelData(0);
   for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  // foley: dry and close, panned a touch toward the gun hand, plus two quiet early reflections (hands, body)
+  foleyBus = ctx.createGain(); foleyBus.gain.value = 1.1;
+  const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createGain();
+  if (pan.pan) pan.pan.value = 0.2;
+  foleyBus.connect(pan).connect(master);
+  for (const [dt, g] of [[0.009, 0.2], [0.017, 0.11]]) {
+    const dl = ctx.createDelay(0.05), lp = ctx.createBiquadFilter(), gn = ctx.createGain();
+    dl.delayTime.value = dt; lp.type = 'lowpass'; lp.frequency.value = 3500; gn.gain.value = g;
+    foleyBus.connect(dl).connect(lp).connect(gn).connect(master);
+  }
+  prewarmFoley();
+}
+
+// ------------------------------------------------------------------ foley playback (see foley.js)
+// 3 rendered variations per beat so repeated reloads never sound copy-pasted; rendered in idle slices after the first tap
+const FOLEY_VARIANTS = 3, foleyCache = new Map();
+function foleyBuffer(gun, beat) {
+  const key = gun + '.' + beat;
+  let c = foleyCache.get(key);
+  if (!c) { c = { bufs: [], i: 0 }; foleyCache.set(key, c); }
+  if (c.bufs.length < FOLEY_VARIANTS) {
+    const data = renderFoley(gun, beat, ctx.sampleRate);
+    if (!data) return null;
+    const b = ctx.createBuffer(1, data.length, ctx.sampleRate); b.copyToChannel(data, 0);
+    c.bufs.push(b);
+    if (c.bufs.length < FOLEY_VARIANTS) return b; // rendering on demand: use the fresh one
+  }
+  return c.bufs[c.i++ % c.bufs.length];
+}
+function prewarmFoley() {
+  const jobs = [];
+  for (let k = 0; k < FOLEY_VARIANTS; k++) for (const [g, b] of foleyBeats()) jobs.push([g, b]);
+  const step = () => {
+    const t0 = performance.now();
+    while (jobs.length && performance.now() - t0 < 6) { const [g, b] = jobs.shift(); const c = foleyCache.get(g + '.' + b); if (!c || c.bufs.length < FOLEY_VARIANTS) foleyBuffer(g, b); }
+    if (jobs.length) setTimeout(step, 16);
+  };
+  setTimeout(step, 50);
+}
+function foley(gun, beat, t) {
+  const b = foleyBuffer(gun, beat);
+  if (!b) return false;
+  const src = ctx.createBufferSource(); src.buffer = b;
+  src.playbackRate.value = 0.97 + Math.random() * 0.06;
+  src.connect(foleyBus); src.start(t);
+  return true;
 }
 
 export function setVolume(v) { if (master) master.gain.value = v; }
@@ -68,45 +115,6 @@ function tone(t, dur, type, f0, f1, gain, send = 0, attack = 0.002) {
 
 const click = (t, f = 2500, gain = 0.25, dur = 0.03) => noise(t, dur, 'bandpass', f, 4, gain);
 
-// --- mechanical foley primitives (reloads, pumps, bolts)
-// metallic ring: a few inharmonic partials with fast decay
-function ring(t, f, gain, dur = 0.12) {
-  [[1, 1], [2.32, 0.6], [4.25, 0.35], [6.63, 0.2]].forEach(([m, g], i) => { if (f * m < 16000) tone(t, dur / (1 + i * 0.6), 'sine', f * m, f * m * 0.997, gain * g, 0.15); });
-}
-// hard contact: transient + resonant body + optional low thump (the "seat" you feel)
-function clack(t, f = 1800, gain = 0.4, body = 0.3) {
-  noise(t, 0.022, 'highpass', 3200, 0.7, gain);
-  noise(t, 0.06, 'bandpass', f, 1.6, gain * 0.8, 0.001, 0.2);
-  ring(t + 0.002, f * 0.9, gain * 0.32, 0.09);
-  if (body) tone(t, 0.09, 'sine', 200, 70, body);
-}
-// friction slide: band-passed noise sweeping between two pitches
-function slide(t, f0, f1, dur, gain) {
-  const fl = noise(t, dur, 'bandpass', f0, 2.5, gain, dur * 0.45);
-  fl.frequency.setValueAtTime(f0, t); fl.frequency.exponentialRampToValueAtTime(f1, t + dur);
-}
-
-const FOLEY = {
-  magOut(t) { clack(t, 2700, 0.22, 0); slide(t + 0.01, 2400, 900, 0.1, 0.28); tone(t + 0.16, 0.1, 'sine', 140, 60, 0.12); },
-  magIn(t) { slide(t, 700, 1900, 0.06, 0.22); clack(t + 0.06, 1500, 0.6, 0.5); },
-  rack(t) { slide(t, 900, 2800, 0.07, 0.3); clack(t + 0.07, 2300, 0.32, 0.08); slide(t + 0.13, 2800, 1200, 0.05, 0.25); clack(t + 0.18, 1700, 0.65, 0.4); },
-  cylOpen(t) { clack(t, 3000, 0.3, 0.05); ring(t + 0.01, 2400, 0.15, 0.2); },
-  eject(t) {
-    for (let i = 0; i < 6; i++) { const f = 3600 + Math.random() * 1600; ring(t + i * 0.025 + Math.random() * 0.015, f, 0.07, 0.14); ring(t + 0.28 + i * 0.04 + Math.random() * 0.03, f * 0.97, 0.035, 0.1); }
-  },
-  speedload(t) { slide(t, 1200, 2300, 0.05, 0.2); clack(t + 0.05, 1900, 0.45, 0.25); },
-  cylClose(t) { clack(t, 2100, 0.6, 0.35); ring(t + 0.005, 1500, 0.2, 0.25); },
-  spin(t) { let tt = t; for (let i = 0; i < 9; i++) { tt += 0.018 + i * 0.006; click(tt, 3400, 0.16 * (1 - i / 11), 0.012); } },
-  shell(t) { slide(t, 900, 1700, 0.05, 0.18); clack(t + 0.05, 1250, 0.42, 0.42); },
-  pump(t) { slide(t, 600, 1400, 0.08, 0.35); clack(t + 0.08, 1100, 0.5, 0.35); slide(t + 0.15, 1400, 700, 0.07, 0.3); clack(t + 0.22, 1400, 0.65, 0.5); },
-  boltUp(t) { clack(t, 2600, 0.3, 0.05); },
-  boltBack(t) { slide(t, 1000, 2600, 0.08, 0.3); clack(t + 0.08, 2400, 0.35, 0.1); },
-  boltFwd(t) { slide(t, 2600, 1100, 0.07, 0.3); clack(t + 0.07, 1800, 0.55, 0.3); },
-  boltDown(t) { clack(t, 2000, 0.45, 0.2); ring(t + 0.005, 1600, 0.15, 0.2); },
-  // reload finished: a bright "ting" + soft thump so you know you're live again without looking
-  ready(t) { ring(t, 2637, 0.13, 0.4); tone(t, 0.3, 'triangle', 1318.5, 1318.5, 0.06, 0.35); tone(t, 0.08, 'sine', 160, 90, 0.18); },
-};
-
 export const sfx = {
   shot(id) {
     if (!on()) return;
@@ -114,8 +122,8 @@ export const sfx = {
     noise(t, 0.035, 'highpass', 2400 * p.pitch * v, 0.7, 0.9 * p.crack);
     noise(t, p.dur, 'lowpass', p.lp * v, 0.8, 0.85 * p.body, 0.002, p.tail);
     tone(t, p.dur * 0.7 + 0.06, 'sine', p.tf * v, 38, 0.9 * p.thump);
-    if (p.mech === 'pump') FOLEY.pump(t + 0.34);
-    if (p.mech === 'bolt') { FOLEY.boltUp(t + 0.42); FOLEY.boltBack(t + 0.48); FOLEY.boltFwd(t + 0.64); FOLEY.boltDown(t + 0.76); }
+    if (p.mech === 'pump') foley('shotgun', 'pump', t + 0.34);
+    if (p.mech === 'bolt') { foley('sniper', 'boltUp', t + 0.42); foley('sniper', 'boltBack', t + 0.48); foley('sniper', 'boltFwd', t + 0.64); foley('sniper', 'boltDown', t + 0.76); }
     if (p.mech === 'hammer') click(t + 0.12, 3200, 0.12, 0.02);
   },
   shell(delay = 0.25) {
@@ -124,8 +132,17 @@ export const sfx = {
     tone(t, 0.06, 'triangle', f, f * 0.9, 0.05); tone(t + 0.09, 0.05, 'triangle', f * 1.05, f, 0.03);
   },
   dry() { if (on()) click(ctx.currentTime, 2800, 0.3, 0.025); },
-  // one beat of a scripted reload (see reloadSeq in config.js)
-  reload(name) { if (on() && FOLEY[name]) FOLEY[name](ctx.currentTime); },
+  // one beat of a scripted reload (see reloadSeq in config.js); every gun has its own recipes in foley.js
+  reload(name, gun) { if (on()) foley(gun, name, ctx.currentTime); },
+  // revolver dead-eye: hammer cocks + the world drops away on entry; a release breath on exit
+  deadeye(enter) {
+    if (!on()) return;
+    const t = ctx.currentTime;
+    if (enter) { foley('revolver', 'ready', t); const f = noise(t, 0.5, 'lowpass', 1200, 0.8, 0.22, 0.02, 0.4, 0.5); f.frequency.exponentialRampToValueAtTime(220, t + 0.45); tone(t, 0.45, 'sine', 90, 45, 0.3); }
+    else { const f = noise(t, 0.3, 'lowpass', 300, 0.8, 0.16, 0.05, 0.3, 0.6); f.frequency.exponentialRampToValueAtTime(1400, t + 0.28); }
+  },
+  // shotgun choke fully tight: a soft mechanical detent
+  choke() { if (on()) { const t = ctx.currentTime; click(t, 3600, 0.16, 0.012); click(t + 0.03, 2400, 0.12, 0.015); } },
   swap() { if (on()) { const t = ctx.currentTime; click(t, 1500, 0.2, 0.05); click(t + 0.12, 2400, 0.25, 0.03); } },
   hit(crit) {
     if (!on()) return;
@@ -177,6 +194,13 @@ export const sfx = {
   focus(onOff) { if (on()) { const t = ctx.currentTime; tone(t, 0.6, 'sine', onOff ? 600 : 150, onOff ? 150 : 600, 0.25, 0.5); } },
   cover() { if (on()) noise(ctx.currentTime, 0.12, 'lowpass', 600, 1, 0.35); },
   tag() { if (on()) tone(ctx.currentTime, 0.04, 'square', 1800 + Math.random() * 200, 2000, 0.04); },
+  // beat camera: a two-note call-out before a turn, then a whoosh that rides the pan
+  cue() { if (on()) { const t = ctx.currentTime; tone(t, 0.08, 'square', 740, 760, 0.06); tone(t + 0.1, 0.16, 'square', 988, 1000, 0.07, 0.25); } },
+  pan(dur) {
+    if (!on()) return;
+    const t = ctx.currentTime, f = noise(t, dur + 0.2, 'bandpass', 260, 1.2, 0.3, dur * 0.5, 0.2, 0.6);
+    f.frequency.setValueAtTime(260, t); f.frequency.exponentialRampToValueAtTime(1100, t + dur * 0.5); f.frequency.exponentialRampToValueAtTime(320, t + dur + 0.15);
+  },
   clear() { if (on()) { const t = ctx.currentTime; [392, 523, 659, 784].forEach((f, i) => tone(t + i * 0.09, 0.4, 'triangle', f, f, 0.12, 0.4)); } },
 
   // Rising whine for charge-up telegraphs. Returns a handle the enemy updates/stops.

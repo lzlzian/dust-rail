@@ -1,7 +1,7 @@
-// Final camera = rail pose + look offset (auto-frame / edge push / keys / gyro) + cover duck
+// Final camera = rail pose + look offset (scripted beat pans / auto-frame / edge push / keys / gyro) + cover duck
 // + scope offset + aim lean + kick + trauma shake + FOV punch.
 import * as THREE from 'three';
-import { G, clamp, damp } from './state.js';
+import { G, clamp, damp, lerp } from './state.js';
 import { settings, WEAPONS, J } from './config.js';
 import { camFx } from './fx.js';
 import { panPoint, keyPan, aimPointerDown } from './input.js';
@@ -12,6 +12,8 @@ const D2R = Math.PI / 180;
 const st = { yaw: 0, pitch: 0, zoom: 0, leanX: 0, leanY: 0, fov: 60, t: 0, swayT: 0, lookYaw: 0, lookPitch: 0, manualT: 9, idleT: 0 };
 const _q = new THREE.Quaternion(), _e = new THREE.Euler(0, 0, 0, 'YXZ'), _v = new THREE.Vector3(), _inv = new THREE.Quaternion();
 const lookQ = new THREE.Quaternion();
+// scripted arcade framing: the level names a bearing for each sub-encounter and the camera pans there on a fixed ease
+const beat = { yaw: 0, from: 0, t: 0, dur: 0 };
 
 // rail orientation + the player's/director's look offset: the "base" every aim calculation starts from
 export const railQuat = () => lookQ;
@@ -91,8 +93,30 @@ function director(halfFov, dt) {
   return best;
 }
 
+// pan to a bearing (deg, + = right of the rail direction); returns the pan duration in seconds
+export function panTo(yawDeg) {
+  beat.from = st.lookYaw; beat.yaw = yawDeg * D2R; beat.t = 0;
+  beat.dur = Math.abs(beat.yaw - beat.from) < 0.01 ? 0 : clamp(Math.abs(beat.yaw - beat.from) / (settings.look.panSpeed * D2R), 0.35, 1.6);
+  return beat.dur;
+}
+export const panning = () => settings.look.mode === 'beats' && beat.t < beat.dur;
+const easeInOut = u => (u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) ** 3 / 2);
+
 function updateLook(rdt) {
   const L = settings.look, w = G.view.w;
+  st.roll = 0;
+  if (panning()) {
+    // scripted pan owns the camera; a slight bank into the turn sells it as a head turn rather than a dolly
+    beat.t += rdt;
+    const u = clamp(beat.t / beat.dur, 0, 1);
+    st.lookYaw = lerp(beat.from, beat.yaw, easeInOut(u));
+    st.lookPitch = damp(st.lookPitch, 0, 6, rdt);
+    st.roll = Math.sin(u * Math.PI) * Math.sign(beat.yaw - beat.from) * -2.5 * D2R * Math.min(1, Math.abs(beat.yaw - beat.from) / 0.6);
+    st.manualT = 0; gyroYaw = gyroPitch = 0;
+    _e.set(st.lookPitch, -st.lookYaw, st.roll);
+    lookQ.copy(rig.quat).multiply(_q.setFromEuler(_e));
+    return;
+  }
   const range = L.range * D2R, prange = L.pitchRange * D2R;
   let push = keyPan();
   const pp = L.edge ? panPoint() : null;
@@ -109,7 +133,10 @@ function updateLook(rdt) {
     gyroYaw = gyroPitch = 0;
   } else if (!L.gyro) st.lookPitch = damp(st.lookPitch, 0, 3, rdt);
   if (rig.moving) { st.lookYaw = damp(st.lookYaw, 0, 2.5, rdt); st.lookPitch = damp(st.lookPitch, 0, 2.5, rdt); }
-  else if (L.auto && st.manualT > L.autoDelay && !G.aim.scoped && !L.gyro) {
+  else if (L.mode === 'beats' && st.manualT > L.autoDelay && !G.aim.scoped && !L.gyro) {
+    // manual peeks (keys / edge push) spring back to the beat's framing
+    st.lookYaw = damp(st.lookYaw, beat.yaw, 3, rdt);
+  } else if (L.mode === 'auto' && st.manualT > L.autoDelay && !G.aim.scoped && !L.gyro) {
     const target = director(G.view.hfov * D2R / 2, rdt);
     // ease off while the player is holding a trigger so the frame doesn't pull their aim around
     const k = 2.2 * L.autoSpeed * (aimPointerDown() ? 0.35 : 1);
@@ -121,7 +148,7 @@ function updateLook(rdt) {
   lookQ.copy(rig.quat).multiply(_q.setFromEuler(_e));
 }
 
-export function resetLook() { st.lookYaw = 0; st.lookPitch = 0; st.manualT = 9; gyroYaw = gyroPitch = 0; }
+export function resetLook() { st.lookYaw = 0; st.lookPitch = 0; st.manualT = 9; gyroYaw = gyroPitch = 0; beat.yaw = beat.from = 0; beat.t = beat.dur = 0; }
 
 // ------------------------------------------------------------------ per frame
 export function updateCamera(rdt) {

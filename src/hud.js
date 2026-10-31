@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { G, clamp, lerp, rand } from './state.js';
 import { WEAPONS, SCHEMES, settings, J } from './config.js';
-import { project, pxRadius, pick, projRadius } from './combat.js';
+import { project, pxRadius, pick, projRadius, spreadNow } from './combat.js';
 
 let ctx, cv;
 const $ = id => document.getElementById(id);
@@ -164,8 +164,9 @@ function drawThumbZones() {
 }
 
 function reticle(w, x, y, onTarget) {
-  const col = onTarget ? '#ff3b2f' : '#ffffff';
-  const sp = G.view.focalPx * Math.tan((w.spread + G.aim.bloom) * Math.PI / 180);
+  const choked = G.aim.choke != null && G.aim.choke >= 1;
+  const col = onTarget ? '#ff3b2f' : choked ? '#ffd23f' : '#ffffff';
+  const sp = G.view.focalPx * Math.tan(spreadNow(w) * Math.PI / 180);
   ctx.save(); ctx.translate(x, y);
   ctx.lineCap = 'round';
   const both = (fn) => { ctx.strokeStyle = '#1b120c'; ctx.lineWidth = 5; fn(); ctx.stroke(); ctx.strokeStyle = col; ctx.lineWidth = 2.2; fn(); ctx.stroke(); };
@@ -174,6 +175,17 @@ function reticle(w, x, y, onTarget) {
   else if (w.id === 'smg') { const g = 7 + sp; both(() => { ctx.beginPath(); for (let i = 0; i < 4; i++) { const a = Math.PI / 4 + i * Math.PI / 2; ctx.moveTo(Math.cos(a) * g, Math.sin(a) * g); ctx.lineTo(Math.cos(a) * (g + 8), Math.sin(a) * (g + 8)); } }); }
   else if (w.id === 'ar') { const g = 6 + sp; both(() => { ctx.beginPath(); ctx.moveTo(-g - 10, 0); ctx.lineTo(-g, 0); ctx.moveTo(g, 0); ctx.lineTo(g + 10, 0); ctx.moveTo(0, g); ctx.lineTo(0, g + 10); ctx.moveTo(0, -g - 10); ctx.lineTo(0, -g); }); both(() => { ctx.beginPath(); ctx.arc(0, 0, 1.2, 0, Math.PI * 2); }); }
   else { both(() => { ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); }); both(() => { ctx.beginPath(); ctx.arc(0, 0, 1.2, 0, Math.PI * 2); }); }
+  // dead-eye: dwell ring while a mark is landing, chamber pips (gold = marked, white = free, dim = empty)
+  if (G.time.deadeye) {
+    if (G.aim.markP > 0) { ctx.beginPath(); ctx.arc(0, 0, 22, -Math.PI / 2, -Math.PI / 2 + G.aim.markP * Math.PI * 2); ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 3; ctx.stroke(); }
+    const ammo = G.aim.deadeyeAmmo ?? 0, marked = G.aim.tags.length;
+    for (let i = 0; i < w.mag; i++) {
+      const px = (i - (w.mag - 1) / 2) * 11;
+      ctx.beginPath(); ctx.arc(px, 34, 3.6, 0, Math.PI * 2);
+      ctx.fillStyle = i < marked ? '#ffd23f' : i < ammo ? '#fff4dc' : 'rgba(255,244,220,.25)';
+      ctx.lineWidth = 2.5; ctx.strokeStyle = '#1b120c'; ctx.stroke(); ctx.fill();
+    }
+  }
   // auto-trigger dwell ring
   if (settings.schemes[w.id] === 'drag-autofire' && onTarget) {
     const p = clamp(G.aim.autoT / Math.max(0.01, settings.autoFireDelay), 0, 1);
@@ -210,6 +222,28 @@ function drawCover(k, reloading) {
   ctx.strokeStyle = '#1b120c'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(-10, top); ctx.lineTo(w + 10, top); ctx.stroke();
   ctx.fillStyle = '#9a6a3a'; ctx.fillRect(-10, top + 3, w + 20, 10);
   if (k > 0.8) text(reloading ? 'IN COVER · reloading' : 'IN COVER', w / 2, top + 36, 14, '#ffd23f');
+  ctx.restore();
+}
+
+// beat camera cue: chevrons sweep toward the side the camera is about to turn to, with the beat's name
+function drawCue(c, now) {
+  const w = G.view.w, h = G.view.h, age = now - c.t;
+  const a = Math.min(1, age / 0.1) * (age > 1.1 ? Math.max(0, 1 - (age - 1.1) / 0.35) : 1);
+  if (a <= 0) return;
+  const d = c.dir || 1, ex = d < 0 ? 0 : w, y = h * 0.4;
+  ctx.save();
+  ctx.globalAlpha = a;
+  const g = ctx.createLinearGradient(ex, 0, ex - d * w * 0.35, 0);
+  g.addColorStop(0, 'rgba(255,210,63,.32)'); g.addColorStop(1, 'rgba(255,210,63,0)');
+  ctx.fillStyle = g; ctx.fillRect(d < 0 ? 0 : w * 0.65, 0, w * 0.35, h);
+  for (let i = 0; i < 3; i++) {
+    const k = (age * 2.4 + i / 3) % 1, x = ex - d * (34 + (1 - k) * 70);
+    ctx.save(); ctx.translate(x, y); ctx.scale(d, 1); ctx.globalAlpha = a * Math.sin(k * Math.PI);
+    ctx.beginPath(); ctx.moveTo(-10, -22); ctx.lineTo(12, 0); ctx.lineTo(-10, 22); ctx.lineTo(-2, 0); ctx.closePath();
+    ctx.lineWidth = 4; ctx.strokeStyle = '#1b120c'; ctx.stroke(); ctx.fillStyle = '#ffd23f'; ctx.fill();
+    ctx.restore();
+  }
+  if (c.label) text(c.label, d < 0 ? 18 : w - 18, y + 46, 16, '#ffd23f', '#1b120c', 5, d < 0 ? 'left' : 'right');
   ctx.restore();
 }
 
@@ -371,6 +405,7 @@ export function drawOverlay(rdt, Wst, grenadeAim) {
     ctx.restore();
   }
 
+  if (G.cue) drawCue(G.cue, now);
   if (G.player.coverT > 0.02) drawCover(G.player.coverT, Wst.reloading);
   if (G.view.zoom > 0.02) drawScope(G.view.zoom);
 
@@ -408,6 +443,13 @@ export function drawOverlay(rdt, Wst, grenadeAim) {
     const R = Math.min(w, h) * 0.38, a = d.a - Math.PI / 2;
     ctx.beginPath(); ctx.arc(w / 2, h * 0.45, R, a - 0.35, a + 0.35);
     ctx.strokeStyle = `rgba(255,50,30,${d.t})`; ctx.lineWidth = 10; ctx.lineCap = 'round'; ctx.stroke();
+  }
+  // dead-eye: warm vignette while time is slowed for marking
+  if (G.time.deadeye) {
+    const g = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.7);
+    g.addColorStop(0, 'rgba(255,170,60,0)'); g.addColorStop(1, 'rgba(150,80,10,.42)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    text('DEAD-EYE', w / 2, h * 0.14, 15, '#ffd23f', '#1b120c', 5);
   }
   if (G.time.focus > 0) {
     const g = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.7);
