@@ -4,10 +4,10 @@ import { G, freshStats } from './state.js';
 import { settings, saveSettings, resetSettings, WEAPONS } from './config.js';
 import { buildSky } from './world.js';
 import { initFx, updateFx, clearFx } from './fx.js';
-import { initAudio, setVolume, sfx } from './audio.js';
+import { initAudio, setVolume } from './audio.js';
 import { initWeapons, updateWeapons, updateViewmodel, layoutViewmodel, selectWeapon, resetWeapons, W, onKill, setWeaponKillHook } from './weapons.js';
-import { initInput, updateInput, cycleScheme, cancelAim } from './input.js';
-import { updateCamera, rig, enableGyro } from './camera.js';
+import { initInput, updateInput, cancelAim } from './input.js';
+import { updateCamera, rig } from './camera.js';
 import { initHud, resizeOverlay, applyHudLayout, updateHudDom, drawOverlay, banner, clearHudFx, popScreenText } from './hud.js';
 import { initAbilities, updateAbilities, resetAbilities, AB, grenadeAim } from './abilities.js';
 import { buildLevel, startEncounter, startRange, updateLevel, LV, ENCOUNTERS, setRunCompleteHook, resetWorldState } from './level.js';
@@ -30,12 +30,7 @@ const { sky } = buildSky(G.scene);
 buildLevel(G.scene);
 initFx(G.scene);
 initWeapons();
-initHud(i => { if (live()) selectWeapon(i); }, () => {
-  if (!live()) return;
-  const s = cycleScheme(1);
-  popScreenText(s.name.toUpperCase(), '#ffd23f', 0.9);
-  sfx.ui();
-});
+initHud(i => { if (live()) selectWeapon(i); });
 initInput(canvas, frame);
 initAbilities(frame);
 applyHudLayout();
@@ -106,7 +101,6 @@ initPanel({
   changed(key) {
     if (key === 'aspect' || key.startsWith('hud.vm') || key === 'hud.viewmodel') resize();
     if (key.startsWith('hud.')) applyHudLayout();
-    if (key.startsWith('schemes.')) cancelAim();
   },
   spawn(type) { if (G.mode === 'run' || G.mode === 'range') spawnAhead(type, rig); closePanel(); },
   juiceAll(on) { for (const k of Object.keys(settings.juice)) if (k !== 'master') settings.juice[k] = on; saveSettings(); rebuildPanel(); },
@@ -117,11 +111,6 @@ initPanel({
     if (G.mode !== 'run') startGame('run');
     resetPlayer();
     startEncounter(i, false);
-  },
-  async gyro() {
-    const ok = await enableGyro();
-    settings.look.gyro = ok; saveSettings(); rebuildPanel();
-    popScreenText(ok ? 'GYRO ON' : 'NO GYRO ACCESS', ok ? '#7dff8a' : '#ff3b2f');
   },
   reset() { resetSettings(); setVolume(settings.volume); applyHudLayout(); resize(); rebuildPanel(); },
   copy,
@@ -147,7 +136,6 @@ function loop(t) {
     let scale = settings.game.gameSpeed;
     if (G.time.slowmo > 0) { G.time.slowmo -= rdt; scale *= G.time.slowmoScale; }
     if (G.time.focus > 0) scale *= 0.35;
-    if (G.time.deadeye) scale *= settings.deadeye.timeScale;
     let gdt = rdt * scale, pdt = G.time.focus > 0 ? rdt * settings.game.gameSpeed : gdt;
     if (G.time.hitstop > 0) { G.time.hitstop -= rdt; gdt = 0; pdt = 0; }
     G.time.now += gdt;

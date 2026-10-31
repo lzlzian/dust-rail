@@ -10,7 +10,7 @@ import { popDamage, popText, hitMarker } from './hud.js';
 
 export const W = {
   idx: 0, ammo: WEAPONS.map(w => w.mag), cool: 0, reloading: false, reloadT: 0,
-  swapT: 0, swapTo: -1, burst: null, volley: null, buffer: null,
+  swapT: 0, swapTo: -1,
   lastAim: new THREE.Vector3(0, 1.5, -20), lastAimT: 0, firing: 0,
 };
 export const cur = () => WEAPONS[W.idx];
@@ -121,7 +121,6 @@ export function layoutViewmodel() {
 
 export function selectWeapon(i, instant = false) {
   if (i === W.idx && !instant) return;
-  W.burst = null; W.burstBuffer = null; W.volley = null; W.buffer = null; G.aim.tags.length = 0;
   if (W.reloading) { W.reloading = false; }
   if (instant) { W.idx = i; VM.guns.forEach((g, k) => (g.visible = k === i)); attachFlash(); return; }
   W.swapTo = i; W.swapT = 0.36; sfx.swap();
@@ -131,7 +130,7 @@ function attachFlash() { VM.guns[W.idx].userData.muzzle.add(VM.flash); }
 export function startReload() {
   const w = cur();
   if (W.reloading || W.ammo[W.idx] >= w.mag || W.swapT > 0) return;
-  W.reloading = true; W.reloadT = 0; W.reloadStage = 0; W.burst = null; W.volley = null;
+  W.reloading = true; W.reloadT = 0; W.reloadStage = 0;
 }
 
 // each scripted reload beat: sound + a small viewmodel jolt + a haptic tick on the beats that "seat"
@@ -148,7 +147,7 @@ export const canShoot = () => !W.reloading && W.swapT <= 0 && W.ammo[W.idx] > 0 
 export const ready = () => canShoot() && W.cool <= 0;
 
 // ------------------------------------------------------------------ firing
-const _o = new THREE.Vector3(), _d = new THREE.Vector3(), _v = new THREE.Vector3(), _u = new THREE.Vector3();
+const _v = new THREE.Vector3(), _u = new THREE.Vector3();
 
 function coneDir(d, deg) {
   if (deg <= 0) return d.clone();
@@ -169,8 +168,8 @@ export function muzzleWorld() {
 
 const WORLD_TINT = { ground: 0xd8b07a, box: 0x9a6a3a, rock: 0xb8653a };
 
-// Fire one trigger pull at screen point (x, y), or straight at a tagged target.
-export function fireAt(x, y, target = null) {
+// Fire one trigger pull at screen point (x, y).
+export function fireAt(x, y) {
   const w = cur();
   if (!canShoot() || W.cool > 0) {
     if (W.ammo[W.idx] <= 0 && !W.reloading && W.swapT <= 0 && !G.player.cover) { sfx.dry(); startReload(); }
@@ -181,19 +180,9 @@ export function fireAt(x, y, target = null) {
   W.firing = 0.12;
   const st = G.stats.weapons[w.id];
   st.shots++;
-  const scheme = settings.schemes[w.id];
-  G.stats.schemesUsed[`${w.id}:${scheme}`] = (G.stats.schemesUsed[`${w.id}:${scheme}`] ?? 0) + 1;
 
-  let base;
-  if (target) {
-    const tp = target.proj ? target.proj.pos : target.hb.c;
-    _o.copy(G.camera.position); _d.copy(tp).sub(_o).normalize();
-    base = { o: _o.clone(), d: _d.clone() };
-  } else {
-    const ay = y - G.aim.climb;
-    base = pick(x, ay, w.id === 'sniper' && G.aim.scoped ? 6 : settings.aimAssist);
-  }
-  const spread = target ? 0.25 : spreadNow(w);
+  const base = pick(x, y - G.aim.climb, w.id === 'sniper' && G.aim.scoped ? 6 : settings.aimAssist);
+  const spread = spreadNow(w);
   const reach = w.choke && G.aim.choke != null ? lerp(1, w.choke.reach, G.aim.choke) : 1; // a tight pattern carries further
   const mw = muzzleWorld();
   const perEnemy = new Map();
@@ -319,10 +308,6 @@ function ejectShell(color, s) {
   sh.life = 0.55; sh.m.visible = true;
 }
 
-// queued bursts (tap-burst) and paint volleys
-export function queueBurst(x, y, n) { if (W.burst) W.burstBuffer = { x, y, n, t: 0.3 }; else W.burst = { x, y, n }; }
-export function startVolley(tags) { if (tags.length) W.volley = tags.slice(); }
-
 // ------------------------------------------------------------------ update
 export function updateWeapons(pdt, rdt) {
   const w = cur();
@@ -347,31 +332,6 @@ export function updateWeapons(pdt, rdt) {
     const p = W.reloadT / w.reload, seq = w.reloadSeq;
     while (W.reloadStage < seq.length && p >= seq[W.reloadStage][0]) reloadBeat(seq[W.reloadStage++][1]);
     if (p >= 1) { W.reloading = false; W.ammo[W.idx] = w.mag; reloadBeat('ready'); W.reloadPop = true; }
-  }
-  if (W.burst && W.cool <= 0) {
-    if (canShoot()) { fireAt(W.burst.x, W.burst.y); if (--W.burst.n <= 0) W.burst = null; }
-    else W.burst = null;
-  }
-  if (W.burstBuffer) {
-    W.burstBuffer.t -= rdt;
-    if (W.burstBuffer.t <= 0) W.burstBuffer = null;
-    else if (!W.burst) { const b = W.burstBuffer; W.burstBuffer = null; W.burst = { x: b.x, y: b.y, n: b.n }; }
-  }
-  if (W.buffer) {
-    W.buffer.t -= rdt;
-    if (W.buffer.t <= 0) W.buffer = null;
-    else if (ready()) { const b = W.buffer; W.buffer = null; fireAt(b.x, b.y); }
-  }
-  if (W.volley && W.cool <= 0) {
-    if (!canShoot()) { W.volley = null; G.aim.tags.length = 0; }
-    else {
-      let t = W.volley.shift();
-      if (t && !(t.proj ? t.proj.alive : t.enemy.alive)) t = W.volley.find(o => (o.proj ? o.proj.alive : o.enemy.alive));
-      // the revolver fans its hammer through a dead-eye volley; paint volleys run a little over the gun's rate
-      if (t) { fireAt(0, 0, t); W.cool = w.fan ?? 60 / (w.rpm * 1.3); }
-      G.aim.tags.splice(0, 1);
-      if (!W.volley.length) { W.volley = null; G.aim.tags.length = 0; }
-    }
   }
 }
 
@@ -431,6 +391,6 @@ export function updateViewmodel(rdt, moving) {
 }
 
 export function resetWeapons() {
-  W.ammo = WEAPONS.map(w => w.mag); W.reloading = false; W.burst = null; W.volley = null; W.buffer = null; W.cool = 0;
-  G.aim.tags.length = 0; G.aim.bloom = 0; G.aim.climb = 0;
+  W.ammo = WEAPONS.map(w => w.mag); W.reloading = false; W.cool = 0;
+  G.aim.bloom = 0; G.aim.climb = 0;
 }

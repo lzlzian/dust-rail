@@ -1,11 +1,10 @@
 // Test bench: every knob that answers one of the six de-risking questions, live-editable on device.
 import * as THREE from 'three';
 import { G } from './state.js';
-import { settings, saveSettings, resetSettings, getPath, setPath, WEAPONS, SCHEMES, DEFAULTS } from './config.js';
+import { settings, saveSettings, resetSettings, getPath, setPath, WEAPONS, DEFAULTS } from './config.js';
 import { setVolume } from './audio.js';
 import { spawnEnemy } from './enemies.js';
 import { ENCOUNTERS } from './level.js';
-import { enableGyro } from './camera.js';
 
 const $ = id => document.getElementById(id);
 
@@ -28,39 +27,20 @@ function sections(hooks) {
       ],
     },
     {
-      title: '1b · LOOKING AROUND', q: 'Portrait only shows about ±30° side to side. Arcade beats (default) split each stop into camera angles: the front, then left/right flank sub-encounters. The camera pans for you at each lull, after a short cue. Compare with the auto-frame director camera, or manual only. Edge push, A/D or arrows, and gyro can peek in any mode; in beats mode the view springs back.',
+      title: '1b · CAMERA BEATS', q: 'Portrait only shows about ±30° side to side, so each stop is split into arcade camera angles: the front, then left/right flank sub-encounters. At each lull a cue points the way and the camera pans there.',
       items: [
-        sel('look.mode', 'Camera', [['beats', 'Arcade beats (scripted pans)'], ['auto', 'Auto-frame (director)'], ['free', 'Manual only']]),
-        rng('look.panSpeed', 'Beat pan speed', 30, 200, 5, v => v + '°/s'),
-        rng('look.cueTime', 'Cue before a beat pan', 0, 1.2, 0.05, v => Math.round(v * 1000) + 'ms'),
-        rng('look.autoSpeed', 'Auto-frame speed', 0.2, 3, 0.1, v => v.toFixed(1) + 'x'),
-        rng('look.autoDelay', 'Snap back after a manual peek', 0, 4, 0.1, v => v.toFixed(1) + 's'),
-        chk('look.edge', 'Edge push'),
-        rng('look.edgeZone', 'Edge zone width', 0.05, 0.3, 0.01, v => Math.round(v * 100) + '%'),
-        rng('look.edgeSpeed', 'Edge push speed', 20, 180, 5, v => v + '°/s'),
-        rng('look.range', 'Max turn from rail', 0, 90, 1, v => '±' + v + '°'),
+        rng('look.panSpeed', 'Pan speed', 30, 200, 5, v => v + '°/s'),
+        rng('look.cueTime', 'Cue before a pan', 0, 1.2, 0.05, v => Math.round(v * 1000) + 'ms'),
         chk('hud.offscreenEnemies', 'Arrows for off-screen enemies'),
-        chk('look.gyro', 'Gyro look'),
-        rng('look.gyroSens', 'Gyro sensitivity', 0.2, 3, 0.1, v => v.toFixed(1) + 'x'),
-        chk('look.gyroInvert', 'Invert gyro'),
-        { type: 'buttons', buttons: [['Enable gyro (asks permission on iOS)', () => hooks.gyro()]] },
       ],
     },
     {
-      title: '2 · GUN CONTROLS', q: 'Tap the scheme chip in the HUD to cycle schemes in-game. Trackpad (Nikke-style drag reticle) works on every gun. With it, SMG/AR fire while held; revolver, shotgun and sniper aim while held and fire on release, each in its own way (see below).',
+      title: '2 · GUN CONTROLS', q: 'Trackpad aim (Nikke-style) on every gun: the reticle stays where you left it; touch anywhere and drag to move it. SMG, AR and revolver fire while held. Shotgun: hold to tighten the pattern, release to fire. Sniper: hold to scope in on the reticle, drag to fine-aim, release to fire.',
       items: [
-        ...WEAPONS.map(w => sel('schemes.' + w.id, w.name, w.schemes.map(s => [s, SCHEMES[s].name]))),
-        { type: 'html', html: Object.values(SCHEMES).map(s => `<b>${s.name}</b>: ${s.desc}`).join('<br>') },
-        rng('reticleOffset', 'Reticle offset above finger', 0, 160, 2, v => v + 'px'),
+        rng('sensitivity', 'Drag sensitivity', 0.5, 3, 0.05, v => v.toFixed(2) + 'x'),
+        rng('aimAssist', 'Aim assist radius', 0, 90, 1, v => v + 'px'),
         rng('recoilClimb', 'Recoil climb (SMG/AR)', 0, 3, 0.1, v => v.toFixed(1) + 'x'),
         sel('spreadPattern', 'Spread pattern', [['center', 'Center-weighted'], ['uniform', 'Uniform disc']]),
-        rng('sensitivity', 'Trackpad sensitivity', 0.5, 3, 0.05, v => v.toFixed(2) + 'x'),
-        chk('trackpadAim', 'Trackpad: revolver / shotgun / sniper hold to aim, release to fire'),
-        rng('deadeye.timeScale', 'Revolver dead-eye slow-mo', 0.2, 1, 0.05, v => (v >= 1 ? 'off' : v.toFixed(2) + 'x')),
-        rng('deadeye.markTime', 'Dead-eye mark dwell', 0, 0.3, 0.01, v => Math.round(v * 1000) + 'ms'),
-        rng('deadeye.max', 'Dead-eye max hold', 0.5, 5, 0.1, v => v.toFixed(1) + 's'),
-        rng('aimAssist', 'Aim assist radius', 0, 90, 1, v => v + 'px'),
-        rng('autoFireDelay', 'Auto-trigger dwell', 0, 0.5, 0.01, v => Math.round(v * 1000) + 'ms'),
         rng('scopeSensitivity', 'Scope drag sensitivity', 0.15, 1.5, 0.05, v => v.toFixed(2) + 'x'),
         rng('scopeSway', 'Scope sway', 0, 3, 0.1, v => v.toFixed(1) + 'x'),
       ],
@@ -120,7 +100,7 @@ function sections(hooks) {
         { type: 'buttons', buttons: [['Restart run', () => hooks.restart()], ['Shooting range', () => hooks.range()], ['Reset all settings', () => hooks.reset()]] },
       ],
     },
-    { title: 'STATS', q: 'Per-session numbers to compare schemes between playtesters.', items: [{ type: 'stats' }, { type: 'buttons', buttons: [['Copy stats JSON', () => hooks.copy()]] }] },
+    { title: 'STATS', q: 'Per-session numbers to compare between playtesters.', items: [{ type: 'stats' }, { type: 'buttons', buttons: [['Copy stats JSON', () => hooks.copy()]] }] },
   ];
 }
 
@@ -209,8 +189,6 @@ export function statsText() {
     if (!x.shots) continue;
     lines.push(`${w.id.padEnd(10)} ${String(x.shots).padStart(5)} ${pct(x.hits, x.shots).padStart(4)} ${pct(x.crits, x.hits).padStart(5)} ${String(x.kills).padStart(5)}`);
   }
-  const used = Object.entries(s.schemesUsed).map(([k, n]) => `  ${k} · ${n} shots`).join('\n');
-  if (used) lines.push('schemes used:\n' + used);
   const p = s.proj;
   lines.push(`\nPROJECTILES  spawned ${p.spawned} · shot down ${p.intercepted} (${pct(p.intercepted, p.spawned)}) · hit you ${p.hitPlayer} · blocked ${p.blocked}`);
   const c = s.charge;

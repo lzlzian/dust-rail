@@ -419,8 +419,7 @@ export function updateLevel(dt) {
     }
     if (!LV.panned && LV.t >= LULL + settings.look.cueTime) {
       LV.panned = true;
-      // beat camera pans for you; in auto/free look modes the cue is all you get
-      if (turns && settings.look.mode === 'beats') { const d = panTo(to.yaw); if (d) sfx.pan(d); }
+      if (turns) { const d = panTo(to.yaw); if (d) sfx.pan(d); }
     }
     if (LV.panned && !panning()) startBeat(LV.beatIdx + 1);
     return;

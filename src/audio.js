@@ -134,13 +134,6 @@ export const sfx = {
   dry() { if (on()) click(ctx.currentTime, 2800, 0.3, 0.025); },
   // one beat of a scripted reload (see reloadSeq in config.js); every gun has its own recipes in foley.js
   reload(name, gun) { if (on()) foley(gun, name, ctx.currentTime); },
-  // revolver dead-eye: hammer cocks + the world drops away on entry; a release breath on exit
-  deadeye(enter) {
-    if (!on()) return;
-    const t = ctx.currentTime;
-    if (enter) { foley('revolver', 'ready', t); const f = noise(t, 0.5, 'lowpass', 1200, 0.8, 0.22, 0.02, 0.4, 0.5); f.frequency.exponentialRampToValueAtTime(220, t + 0.45); tone(t, 0.45, 'sine', 90, 45, 0.3); }
-    else { const f = noise(t, 0.3, 'lowpass', 300, 0.8, 0.16, 0.05, 0.3, 0.6); f.frequency.exponentialRampToValueAtTime(1400, t + 0.28); }
-  },
   // shotgun choke fully tight: a soft mechanical detent
   choke() { if (on()) { const t = ctx.currentTime; click(t, 3600, 0.16, 0.012); click(t + 0.03, 2400, 0.12, 0.015); } },
   swap() { if (on()) { const t = ctx.currentTime; click(t, 1500, 0.2, 0.05); click(t + 0.12, 2400, 0.25, 0.03); } },
@@ -193,7 +186,6 @@ export const sfx = {
   heal() { if (on()) { const t = ctx.currentTime; [523, 659, 784].forEach((f, i) => tone(t + i * 0.07, 0.25, 'triangle', f, f, 0.12, 0.3)); } },
   focus(onOff) { if (on()) { const t = ctx.currentTime; tone(t, 0.6, 'sine', onOff ? 600 : 150, onOff ? 150 : 600, 0.25, 0.5); } },
   cover() { if (on()) noise(ctx.currentTime, 0.12, 'lowpass', 600, 1, 0.35); },
-  tag() { if (on()) tone(ctx.currentTime, 0.04, 'square', 1800 + Math.random() * 200, 2000, 0.04); },
   // beat camera: a two-note call-out before a turn, then a whoosh that rides the pan
   cue() { if (on()) { const t = ctx.currentTime; tone(t, 0.08, 'square', 740, 760, 0.06); tone(t + 0.1, 0.16, 'square', 988, 1000, 0.07, 0.25); } },
   pan(dur) {

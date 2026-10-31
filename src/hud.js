@@ -2,12 +2,12 @@
 // (reticles, damage numbers, hit markers, telegraph rings, off-screen arrows, projectile markers, debug overlays).
 import * as THREE from 'three';
 import { G, clamp, lerp, rand } from './state.js';
-import { WEAPONS, SCHEMES, settings, J } from './config.js';
+import { WEAPONS, settings, J } from './config.js';
 import { project, pxRadius, pick, projRadius, spreadNow } from './combat.js';
 
 let ctx, cv;
 const $ = id => document.getElementById(id);
-const items = { nums: [], texts: [], screen: [], markers: [], ripples: [] };
+const items = { nums: [], texts: [], screen: [], markers: [] };
 const _pp = { x: 0, y: 0, behind: false, dist: 0 };
 
 export const ICONS = {
@@ -22,7 +22,7 @@ export const ICONS = {
   medkit: '<svg viewBox="0 0 24 24"><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z"/></svg>',
 };
 
-export function initHud(onWeapon, onScheme) {
+export function initHud(onWeapon) {
   cv = $('overlay'); ctx = cv.getContext('2d');
   const wrap = $('weapons');
   WEAPONS.forEach((w, i) => {
@@ -32,7 +32,6 @@ export function initHud(onWeapon, onScheme) {
     wrap.appendChild(b);
   });
   for (const id of ['cover', 'grenade', 'focus', 'medkit']) $('ab' + id[0].toUpperCase() + id.slice(1)).querySelector('.ic').innerHTML = ICONS[id];
-  $('scheme').addEventListener('pointerdown', e => { e.stopPropagation(); onScheme(); });
 }
 
 export function resizeOverlay() {
@@ -59,7 +58,6 @@ export function popScreenText(text, color = '#fff4dc', scale = 1) {
   items.screen.push({ t: 0, life: 0.8, text, color, scale });
 }
 export function hitMarker(x, y, kind) { items.markers.push({ x, y, kind, t: 0, life: kind === 'kill' ? 0.35 : 0.2 }); }
-export function tapRipple(x, y) { items.ripples.push({ x, y, t: 0, life: 0.3 }); }
 
 let bannerTimer = 0;
 export function banner(text, sub = '') {
@@ -71,7 +69,9 @@ export function banner(text, sub = '') {
 export function setStage(name, prog) { $('stageName').textContent = name; $('stageProg').textContent = prog; }
 
 // ------------------------------------------------------------------ DOM update
-let lastHp = -1, lastAmmo = '', lastScore = -1, lastIdx = -1, lastScheme = '';
+let lastHp = -1, lastAmmo = '', lastScore = -1, lastIdx = -1;
+const lowAmmo = (n, mag) => n <= Math.max(1, Math.ceil(mag * 0.25));
+const critAmmo = (n, mag) => n <= Math.max(1, Math.floor(mag * 0.1));
 export function updateHudDom(W, abilities) {
   const P = G.player, w = WEAPONS[W.idx];
   if (P.hp !== lastHp) {
@@ -86,17 +86,16 @@ export function updateHudDom(W, abilities) {
     lastAmmo = ammo;
     $('ammoNum').textContent = W.ammo[W.idx]; $('ammoMax').textContent = '/' + w.mag;
     $('ammo').classList.toggle('empty', W.ammo[W.idx] === 0);
+    $('ammo').classList.toggle('low', W.ammo[W.idx] > 0 && lowAmmo(W.ammo[W.idx], w.mag));
   }
   if (W.reloadPop) { W.reloadPop = false; const a = $('ammo'); a.classList.remove('pop'); void a.offsetWidth; a.classList.add('pop'); }
   $('reloadBar').classList.toggle('on', W.reloading);
   if (W.reloading) $('reloadBar').firstChild.style.width = Math.min(100, (W.reloadT / w.reload) * 100) + '%';
   if (G.score !== lastScore) { lastScore = G.score; $('score').textContent = G.score.toLocaleString(); }
   $('combo').textContent = G.combo > 1 ? `x${G.combo} COMBO` : '';
-  const sc = settings.schemes[w.id];
-  if (W.idx !== lastIdx || sc !== lastScheme) {
-    lastIdx = W.idx; lastScheme = sc;
+  if (W.idx !== lastIdx) {
+    lastIdx = W.idx;
     $('wName').textContent = w.name;
-    $('scheme').textContent = SCHEMES[sc].short + ' ↻';
     [...$('weapons').children].forEach((b, i) => b.classList.toggle('on', i === W.idx));
   }
   for (const [id, a] of Object.entries(abilities)) {
@@ -163,11 +162,12 @@ function drawThumbZones() {
   ctx.restore();
 }
 
-function reticle(w, x, y, onTarget) {
+function reticle(w, x, y, onTarget, dim) {
   const choked = G.aim.choke != null && G.aim.choke >= 1;
   const col = onTarget ? '#ff3b2f' : choked ? '#ffd23f' : '#ffffff';
   const sp = G.view.focalPx * Math.tan(spreadNow(w) * Math.PI / 180);
   ctx.save(); ctx.translate(x, y);
+  if (dim) ctx.globalAlpha = 0.45;
   ctx.lineCap = 'round';
   const both = (fn) => { ctx.strokeStyle = '#1b120c'; ctx.lineWidth = 5; fn(); ctx.stroke(); ctx.strokeStyle = col; ctx.lineWidth = 2.2; fn(); ctx.stroke(); };
   if (w.id === 'revolver') { both(() => { ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); }); both(() => { ctx.beginPath(); ctx.arc(0, 0, 1.5, 0, Math.PI * 2); }); }
@@ -175,21 +175,51 @@ function reticle(w, x, y, onTarget) {
   else if (w.id === 'smg') { const g = 7 + sp; both(() => { ctx.beginPath(); for (let i = 0; i < 4; i++) { const a = Math.PI / 4 + i * Math.PI / 2; ctx.moveTo(Math.cos(a) * g, Math.sin(a) * g); ctx.lineTo(Math.cos(a) * (g + 8), Math.sin(a) * (g + 8)); } }); }
   else if (w.id === 'ar') { const g = 6 + sp; both(() => { ctx.beginPath(); ctx.moveTo(-g - 10, 0); ctx.lineTo(-g, 0); ctx.moveTo(g, 0); ctx.lineTo(g + 10, 0); ctx.moveTo(0, g); ctx.lineTo(0, g + 10); ctx.moveTo(0, -g - 10); ctx.lineTo(0, -g); }); both(() => { ctx.beginPath(); ctx.arc(0, 0, 1.2, 0, Math.PI * 2); }); }
   else { both(() => { ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); }); both(() => { ctx.beginPath(); ctx.arc(0, 0, 1.2, 0, Math.PI * 2); }); }
-  // dead-eye: dwell ring while a mark is landing, chamber pips (gold = marked, white = free, dim = empty)
-  if (G.time.deadeye) {
-    if (G.aim.markP > 0) { ctx.beginPath(); ctx.arc(0, 0, 22, -Math.PI / 2, -Math.PI / 2 + G.aim.markP * Math.PI * 2); ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 3; ctx.stroke(); }
-    const ammo = G.aim.deadeyeAmmo ?? 0, marked = G.aim.tags.length;
-    for (let i = 0; i < w.mag; i++) {
-      const px = (i - (w.mag - 1) / 2) * 11;
-      ctx.beginPath(); ctx.arc(px, 34, 3.6, 0, Math.PI * 2);
-      ctx.fillStyle = i < marked ? '#ffd23f' : i < ammo ? '#fff4dc' : 'rgba(255,244,220,.25)';
-      ctx.lineWidth = 2.5; ctx.strokeStyle = '#1b120c'; ctx.stroke(); ctx.fill();
+  ctx.restore();
+}
+
+// Ammo arc on the right of the reticle: one segment per round for small mags, a draining bar + count for big ones.
+// Goes yellow when low and red (pulsing) on the last rounds. Reloading swaps it for a progress ring + label;
+// a ring flash marks the moment you're live again.
+let reloadFlash = 0, wasReloading = false;
+function drawAmmo(w, Wst, x, y, rdt, scale) {
+  const n = Wst.ammo[Wst.idx], mag = w.mag, now = G.time.real;
+  if (wasReloading && !Wst.reloading && n === mag) reloadFlash = 0.3;
+  wasReloading = Wst.reloading;
+  const R = 46 * scale, A0 = Math.PI * 0.3, A1 = -Math.PI * 0.3, at = t => A0 + (A1 - A0) * t;
+  ctx.save(); ctx.translate(x, y); ctx.lineCap = 'butt';
+  // live rounds: inked and bright; spent slots: a faint ghost so the remaining count dominates
+  const arc = (t0, t1, col, lw = 6) => {
+    ctx.beginPath(); ctx.arc(0, 0, R, at(t0), at(t1), true);
+    ctx.strokeStyle = '#1b120c'; ctx.lineWidth = lw + 3; ctx.stroke();
+    ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.stroke();
+  };
+  const ghost = (t0, t1) => { ctx.beginPath(); ctx.arc(0, 0, R, at(t0), at(t1), true); ctx.strokeStyle = 'rgba(255,244,220,.28)'; ctx.lineWidth = 3; ctx.stroke(); };
+  if (Wst.reloading) {
+    const p = clamp(Wst.reloadT / w.reload, 0, 1);
+    ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(27,18,12,.55)'; ctx.lineWidth = 8; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, R, -Math.PI / 2, -Math.PI / 2 + p * Math.PI * 2); ctx.strokeStyle = '#1b120c'; ctx.lineWidth = 8; ctx.stroke();
+    ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 5; ctx.stroke();
+    ctx.globalAlpha = 0.75 + Math.sin(now * 12) * 0.25;
+    text('RELOADING', 0, R + 16, 14 * scale, '#ffd23f', '#1b120c', 5);
+  } else {
+    const low = lowAmmo(n, mag), crit = n === 0 || critAmmo(n, mag);
+    const col = crit ? '#ff3b2f' : low ? '#ffd23f' : '#fff4dc';
+    if (crit) ctx.globalAlpha = 0.65 + Math.sin(now * 16) * 0.35;
+    if (mag <= 8) {
+      const gap = 0.035;
+      for (let i = 0; i < mag; i++) i < n ? arc(i / mag + gap, (i + 1) / mag - gap, col) : ghost(i / mag + gap, (i + 1) / mag - gap);
+    } else {
+      ghost(n / mag, 1);
+      if (n > 0) arc(0, n / mag, col);
+      text(String(n), R + 6, 0, 15 * scale, col, '#1b120c', 4, 'left');
     }
   }
-  // auto-trigger dwell ring
-  if (settings.schemes[w.id] === 'drag-autofire' && onTarget) {
-    const p = clamp(G.aim.autoT / Math.max(0.01, settings.autoFireDelay), 0, 1);
-    ctx.beginPath(); ctx.arc(0, 0, 22, -Math.PI / 2, -Math.PI / 2 + p * Math.PI * 2); ctx.strokeStyle = '#ff3b2f'; ctx.lineWidth = 3; ctx.stroke();
+  if (reloadFlash > 0) {
+    reloadFlash -= rdt;
+    const k = 1 - reloadFlash / 0.3;
+    ctx.globalAlpha = 1 - k;
+    ctx.beginPath(); ctx.arc(0, 0, R + k * 16, 0, Math.PI * 2); ctx.strokeStyle = '#fff4dc'; ctx.lineWidth = 4; ctx.stroke();
   }
   ctx.restore();
 }
@@ -330,22 +360,6 @@ export function drawOverlay(rdt, Wst, grenadeAim) {
     }
   }
 
-  // paint tags
-  if (G.aim.tags.length) {
-    const groups = new Map();
-    for (const t of G.aim.tags) { const k = t.proj || t.enemy; groups.set(k, { t, n: (groups.get(k)?.n ?? 0) + 1 }); }
-    for (const { t, n } of groups.values()) {
-      const pos = t.proj ? t.proj.pos : t.hb.c;
-      project(pos, _pp); if (_pp.behind) continue;
-      ctx.save(); ctx.translate(_pp.x, _pp.y); ctx.rotate(now * 3);
-      const s = 13 + n * 1.5;
-      ctx.beginPath(); ctx.moveTo(0, -s); ctx.lineTo(s, 0); ctx.lineTo(0, s); ctx.lineTo(-s, 0); ctx.closePath();
-      ctx.lineWidth = 5; ctx.strokeStyle = '#1b120c'; ctx.stroke(); ctx.lineWidth = 2.5; ctx.strokeStyle = '#ff3b2f'; ctx.stroke();
-      ctx.restore();
-      text('x' + n, _pp.x + s + 10, _pp.y - s, 14, '#ff3b2f');
-    }
-  }
-
   // world texts
   for (let i = items.texts.length - 1; i >= 0; i--) {
     const o = items.texts[i]; o.t += rdt;
@@ -371,25 +385,10 @@ export function drawOverlay(rdt, Wst, grenadeAim) {
   }
 
   // reticle
-  const aimY = G.aim.y - G.aim.climb;
-  if (G.aim.visible && !G.aim.scoped && G.view.zoom < 0.2 && G.player.alive) {
-    const sc = settings.schemes[wpn.id];
-    if ((sc === 'offset-hold' || sc === 'paint') && settings.reticleOffset > 0) {
-      ctx.save(); ctx.setLineDash([3, 5]); ctx.strokeStyle = 'rgba(255,255,255,.45)'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(G.aim.x, G.aim.y + settings.reticleOffset - 26); ctx.lineTo(G.aim.x, aimY + 18); ctx.stroke(); ctx.setLineDash([]);
-      ctx.beginPath(); ctx.arc(G.aim.x, G.aim.y + settings.reticleOffset, 24, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.stroke();
-      ctx.restore();
-    }
-    const onT = G.aim.onTarget || (() => { const p = pick(G.aim.x, aimY, settings.aimAssist * 0.6); return !!(p.enemy || p.proj); })();
-    reticle(wpn, G.aim.x, aimY, onT);
-  }
-  // tap ripples
-  for (let i = items.ripples.length - 1; i >= 0; i--) {
-    const o = items.ripples[i]; o.t += rdt;
-    if (o.t > o.life) { items.ripples.splice(i, 1); continue; }
-    const k = o.t / o.life;
-    ctx.beginPath(); ctx.arc(o.x, o.y, 8 + k * 26, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(255,255,255,${0.6 * (1 - k)})`; ctx.lineWidth = 2.5; ctx.stroke();
+  const aimY = G.aim.y - G.aim.climb, showReticle = !G.aim.scoped && G.view.zoom < 0.2 && G.player.alive;
+  if (showReticle) {
+    const p = pick(G.aim.x, aimY, settings.aimAssist * 0.6);
+    reticle(wpn, G.aim.x, aimY, !!(p.enemy || p.proj), Wst.reloading);
   }
   // hit markers
   for (let i = items.markers.length - 1; i >= 0; i--) {
@@ -408,6 +407,11 @@ export function drawOverlay(rdt, Wst, grenadeAim) {
   if (G.cue) drawCue(G.cue, now);
   if (G.player.coverT > 0.02) drawCover(G.player.coverT, Wst.reloading);
   if (G.view.zoom > 0.02) drawScope(G.view.zoom);
+  // ammo rides on the reticle (or the scope centre), where your eyes already are
+  if (G.player.alive) {
+    const scoped = G.view.zoom >= 0.2;
+    if (showReticle || scoped) drawAmmo(wpn, Wst, scoped ? w / 2 : G.aim.x, scoped ? h / 2 : aimY, rdt, scoped ? 1.5 : 1);
+  }
 
   // grenade aim (dragging from the button)
   if (grenadeAim) {
@@ -443,13 +447,6 @@ export function drawOverlay(rdt, Wst, grenadeAim) {
     const R = Math.min(w, h) * 0.38, a = d.a - Math.PI / 2;
     ctx.beginPath(); ctx.arc(w / 2, h * 0.45, R, a - 0.35, a + 0.35);
     ctx.strokeStyle = `rgba(255,50,30,${d.t})`; ctx.lineWidth = 10; ctx.lineCap = 'round'; ctx.stroke();
-  }
-  // dead-eye: warm vignette while time is slowed for marking
-  if (G.time.deadeye) {
-    const g = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.7);
-    g.addColorStop(0, 'rgba(255,170,60,0)'); g.addColorStop(1, 'rgba(150,80,10,.42)');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-    text('DEAD-EYE', w / 2, h * 0.14, 15, '#ffd23f', '#1b120c', 5);
   }
   if (G.time.focus > 0) {
     const g = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.7);

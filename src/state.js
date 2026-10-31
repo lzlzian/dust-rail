@@ -13,7 +13,7 @@ export const G = {
   score: 0, combo: 0, comboT: 0,
   attackTokens: 0,
   cue: null,               // upcoming beat pan { dir, label, t }, drawn by the HUD
-  aim: { x: 0, y: 0, visible: false, bloom: 0, climb: 0, scoped: false, scopeT: 0, autoT: 0, tags: [] },
+  aim: { x: 0, y: 0, visible: false, bloom: 0, climb: 0, scoped: false, choke: null },
   stats: null,
 };
 
@@ -21,7 +21,6 @@ export function freshStats() {
   return {
     started: performance.now(),
     weapons: Object.fromEntries(WEAPONS.map(w => [w.id, { shots: 0, hits: 0, crits: 0, kills: 0, dmg: 0, time: 0 }])),
-    schemesUsed: {},
     proj: { spawned: 0, intercepted: 0, hitPlayer: 0, blocked: 0 },
     charge: { started: 0, interrupted: 0, killed: 0, landed: 0, blocked: 0 },
     dmgTaken: {},
