@@ -1,6 +1,6 @@
 // Weapon state, firing/damage resolution, and the first-person viewmodel (separate scene, drawn on top).
 import * as THREE from 'three';
-import { G, rand, clamp, lerp, smooth } from './state.js';
+import { G, rand, clamp, lerp } from './state.js';
 import { WEAPONS, settings, J } from './config.js';
 import { toon, outline } from './world.js';
 import { pick, castWorld, castTargets, screenRay, project, spreadNow } from './combat.js';
@@ -26,10 +26,7 @@ function gunModel(w) {
   const L = w.look, body = toon(L.body), acc = toon(L.accent), grip = toon(L.grip), dark = toon(0x26221e);
   const add = (geo, m, x, y, z, rx = 0, ot = 0.006) => { const mesh = new THREE.Mesh(geo, m); mesh.position.set(x, y, z); mesh.rotation.x = rx; outline(mesh, ot); g.add(mesh); return mesh; };
   const B = (a, b, c) => new THREE.BoxGeometry(a, b, c), C = (r, h, s = 8) => new THREE.CylinderGeometry(r, r, h, s).rotateX(Math.PI / 2);
-  // sight = where the sight line runs in model space (y height, z of the rear sight) and how far it sits from the eye;
-  // stock = parts that would sit against the shoulder, hidden while sighted (they'd fill the bottom of the screen)
-  let mz = 0.3, port = new THREE.Vector3(0.03, 0.05, 0.02), sight = null;
-  const stock = [];
+  let mz = 0.3, port = new THREE.Vector3(0.03, 0.05, 0.02);
   if (w.id === 'revolver') {
     add(B(0.055, 0.08, 0.13), body, 0, 0.03, 0.02);
     add(C(0.02, 0.2), body, 0, 0.05, 0.17);
@@ -37,11 +34,6 @@ function gunModel(w) {
     add(C(0.045, 0.075, 7), acc, 0, 0.03, 0.04);
     add(B(0.05, 0.13, 0.06), grip, 0, -0.06, -0.05, 0.35);
     add(B(0.015, 0.03, 0.03), dark, 0, 0.08, -0.05);
-    // sights: notch on the top strap, blade on the rib
-    add(B(0.036, 0.026, 0.012), body, 0, 0.081, -0.02, 0, 0.003);
-    for (const sx of [-1, 1]) add(B(0.012, 0.02, 0.012), dark, sx * 0.012, 0.102, -0.02, 0, 0.0015);
-    add(B(0.008, 0.024, 0.016), dark, 0, 0.1, 0.24, 0, 0.0015);
-    sight = { y: 0.112, z: -0.02, eye: 0.36 }; // held out at arm's length
     mz = 0.28; port.set(0.04, 0.04, 0.04);
   } else if (w.id === 'smg') {
     add(B(0.07, 0.09, 0.26), body, 0, 0.03, 0.05);
@@ -56,26 +48,16 @@ function gunModel(w) {
     add(C(0.017, 0.2), dark, 0, 0.045, 0.31);
     add(B(0.045, 0.15, 0.06), acc, 0, -0.08, 0.1, 0.35);
     add(B(0.05, 0.1, 0.05), grip, 0, -0.05, -0.04, 0.3);
-    stock.push(add(B(0.06, 0.08, 0.18), grip, 0, 0.02, -0.2));
+    add(B(0.06, 0.08, 0.18), grip, 0, 0.02, -0.2);
+    add(C(0.022, 0.1, 6), acc, 0, 0.11, 0.06);
     add(B(0.05, 0.04, 0.12), body, 0, -0.03, 0.21);
-    // sights: rear peep (ring on a block) on the receiver, front post between protective ears on a tower
-    add(B(0.024, 0.028, 0.03), body, 0, 0.089, -0.07, 0, 0.003);
-    add(new THREE.TorusGeometry(0.02, 0.0048, 6, 20), dark, 0, 0.13, -0.07, 0, 0.0012);
-    add(B(0.014, 0.05, 0.014), acc, 0, 0.09, 0.36, 0, 0.003);
-    add(B(0.008, 0.016, 0.006), dark, 0, 0.122, 0.36, 0, 0.0012);
-    for (const sx of [-1, 1]) add(B(0.005, 0.02, 0.008), acc, sx * 0.015, 0.122, 0.36, 0, 0.0012);
-    sight = { y: 0.13, z: -0.07, eye: 0.2 };
     mz = 0.42;
   } else if (w.id === 'shotgun') {
     add(B(0.08, 0.09, 0.22), body, 0, 0.02, 0.0);
     add(C(0.024, 0.42), acc, -0.022, 0.05, 0.3);
     add(C(0.024, 0.42), acc, 0.022, 0.05, 0.3);
     W.pump = add(B(0.07, 0.06, 0.14), grip, 0, 0.0, 0.26);
-    stock.push(add(B(0.06, 0.1, 0.22), grip, 0, -0.01, -0.2, 0.15));
-    // sight: a flat rib between the barrels and a brass bead at the muzzle
-    add(B(0.014, 0.008, 0.42), dark, 0, 0.076, 0.3, 0, 0.0015);
-    add(new THREE.SphereGeometry(0.0075, 8, 6), toon(0xe8c050), 0, 0.085, 0.5, 0, 0.0015);
-    sight = { y: 0.087, z: 0.09, eye: 0.42 };
+    add(B(0.06, 0.1, 0.22), grip, 0, -0.01, -0.2, 0.15);
     mz = 0.52; port.set(0.045, 0.03, 0.04);
   } else {
     add(B(0.07, 0.09, 0.38), body, 0, 0.03, 0.05);
@@ -90,7 +72,7 @@ function gunModel(w) {
   }
   const muzzle = new THREE.Object3D(); muzzle.position.set(0, 0.05, mz); g.add(muzzle);
   const ejector = new THREE.Object3D(); ejector.position.copy(port); g.add(ejector);
-  g.userData = { muzzle, ejector, sight, stock };
+  g.userData = { muzzle, ejector };
   g.visible = false;
   return g;
 }
@@ -199,9 +181,7 @@ export function fireAt(x, y) {
   const st = G.stats.weapons[w.id];
   st.shots++;
 
-  // sighted, the climb already lives in the camera pitch; at the hip it's a screen offset on the reticle
-  const sighted = G.aim.ads && G.aim.sight === w.sight;
-  const base = pick(x, sighted ? y : y - G.aim.climb, settings.aimAssist * (sighted ? w.sight.assist ?? 1 : 1));
+  const base = pick(x, y - G.aim.climb, w.id === 'sniper' && G.aim.scoped ? 6 : settings.aimAssist);
   const spread = spreadNow(w);
   const reach = w.choke && G.aim.choke != null ? lerp(1, w.choke.reach, G.aim.choke) : 1; // a tight pattern carries further
   const mw = muzzleWorld();
@@ -355,45 +335,33 @@ export function updateWeapons(pdt, rdt) {
   }
 }
 
-const _q = new THREE.Quaternion(), _m = new THREE.Matrix4(), _w = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
-
-// the viewmodel is drawn unless a scope is up (the scope overlay replaces it)
-export const viewmodelShown = () => settings.hud.viewmodel && !(G.aim.ads && G.aim.sight.type === 'scope') && G.mode !== 'menu';
+const _q = new THREE.Quaternion(), _m = new THREE.Matrix4(), UP = new THREE.Vector3(0, 1, 0);
 
 export function updateViewmodel(rdt, moving) {
-  VM.root.visible = viewmodelShown();
-  const g = VM.guns[W.idx], sp = g.userData.sight;
-  // aim down the sights: the gun slides in until its sight line runs down the view axis, keeping pace with the zoom
-  const iron = sp && G.aim.sight && G.aim.sight === cur().sight && G.aim.sight.type !== 'scope';
-  const k = iron ? smooth(clamp(G.view.zoom, 0, 1)) : 0, s = VM.root.scale.x;
-  if (sp) _w.set(0, -sp.y * s, -sp.eye + sp.z * s); else _w.copy(VM.restPos); // rear sight on the axis, `eye` ahead
-  VM.root.position.lerpVectors(VM.restPos, _w, k);
-  for (const m of g.userData.stock) m.visible = k < 0.4;
-  // aim the gun at what we're shooting at (camera-local), drifting back to rest; sighted, it points dead ahead
+  const show = settings.hud.viewmodel && !G.aim.scoped && G.mode !== 'menu';
+  VM.root.visible = show;
+  // aim the gun at what we're shooting at (camera-local), drifting back to rest
   W.lastAimT -= rdt;
   let target;
   if (G.aim.visible) { const { o, d } = screenRay(G.aim.x, G.aim.y - G.aim.climb); target = o.clone().addScaledVector(d, 25); }
   else if (W.lastAimT > 0) target = W.lastAim;
   if (target) _v.copy(target).applyMatrix4(G.camera.matrixWorldInverse);
   else _v.set(VM.restPos.x * 0.3, VM.restPos.y * 0.2, -20);
-  if (k > 0) _v.lerp(_w.set(VM.root.position.x, VM.root.position.y, -25), k);
   _m.lookAt(_v, VM.root.position, UP);
   _q.setFromRotationMatrix(_m);
-  VM.aim.quaternion.slerp(_q, 1 - Math.exp(-lerp(18, 40, k) * rdt));
+  VM.aim.quaternion.slerp(_q, 1 - Math.exp(-18 * rdt));
 
   // recoil spring
   const r = VM.rec, K = 230, C = 21;
   r.vz += (-K * r.z - C * r.vz) * rdt; r.z += r.vz * rdt;
   r.vrx += (-K * r.rx - C * r.vrx) * rdt; r.rx += r.vrx * rdt;
   r.vry += (-K * r.ry - C * r.vry) * rdt; r.ry += r.vry * rdt;
-  // sighted, the kick is reined in so the sight picture stays readable between shots
-  const rk = 1 - 0.55 * k;
-  VM.recoil.position.set(0, 0, r.z * rk);
-  VM.recoil.rotation.set(-r.rx * rk, r.ry * rk, 0);
+  VM.recoil.position.set(0, 0, r.z);
+  VM.recoil.rotation.set(-r.rx, r.ry, 0);
 
   // bob / swap / reload poses
   VM.bob += rdt * (moving ? 9 : 1.6);
-  const amp = (moving ? 0.012 : 0.003) * (1 - 0.85 * k);
+  const amp = moving ? 0.012 : 0.003;
   let px = Math.sin(VM.bob) * amp, py = Math.abs(Math.cos(VM.bob)) * amp * (moving ? 1 : 0.5);
   let rx = 0, rz = 0;
   if (W.swapT > 0) { const k = 1 - Math.abs(W.swapT - 0.18) / 0.18; py -= 0.22 * k; rx += 0.9 * k; }
@@ -404,6 +372,7 @@ export function updateViewmodel(rdt, moving) {
   if (W.pumpT > 0) { W.pumpT -= rdt; const k = Math.sin(clamp((0.55 - W.pumpT) / 0.4, 0, 1) * Math.PI); if (W.pump) W.pump.position.z = 0.26 - 0.08 * k; rz -= 0.15 * k; }
   if (W.boltT > 0) { W.boltT -= rdt; const k = Math.sin(clamp((0.75 - W.boltT) / 0.5, 0, 1) * Math.PI); rz -= 0.35 * k; py -= 0.02 * k; }
   if (G.player.coverT > 0) { py -= 0.16 * G.player.coverT; rx += 0.5 * G.player.coverT; }
+  const g = VM.guns[W.idx];
   g.position.set(px, py, 0);
   g.rotation.set(rx, 0, rz);
 

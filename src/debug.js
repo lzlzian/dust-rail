@@ -35,16 +35,12 @@ function sections(hooks) {
       ],
     },
     {
-      title: '2 · GUN CONTROLS', q: 'Trackpad aim (Nikke-style): the reticle stays where you left it; touch anywhere and drag to move it. SMG: hip fire while held. AR and revolver: holding raises the iron sights onto the reticle, then they fire while held. Shotgun: hold to look down the rib and tighten the pattern, release to fire. Sniper: hold to scope in, release to fire. While sighted, dragging turns the view.',
+      title: '2 · GUN CONTROLS', q: 'Trackpad aim (Nikke-style) on every gun: the reticle stays where you left it; touch anywhere and drag to move it. SMG, AR and revolver fire while held. Shotgun: hold to tighten the pattern, release to fire. Sniper: hold to scope in on the reticle, drag to fine-aim, release to fire.',
       items: [
         rng('sensitivity', 'Drag sensitivity', 0.5, 3, 0.05, v => v.toFixed(2) + 'x'),
         rng('aimAssist', 'Aim assist radius', 0, 90, 1, v => v + 'px'),
         rng('recoilClimb', 'Recoil climb (SMG/AR)', 0, 3, 0.1, v => v.toFixed(1) + 'x'),
         sel('spreadPattern', 'Spread pattern', [['center', 'Center-weighted'], ['uniform', 'Uniform disc']]),
-        chk('sights', 'Hold raises sights (AR, revolver, shotgun)'),
-        rng('sightSensitivity', 'Iron sight drag sensitivity', 0.3, 2.5, 0.05, v => v.toFixed(2) + 'x'),
-        rng('sightRaise', 'Sight raise time', 0, 2.5, 0.05, v => v === 0 ? 'instant' : v.toFixed(2) + 'x'),
-        rng('sightZoom', 'Iron sight zoom', 0, 2.5, 0.05, v => v.toFixed(2) + 'x'),
         rng('scopeSensitivity', 'Scope drag sensitivity', 0.15, 1.5, 0.05, v => v.toFixed(2) + 'x'),
         rng('scopeSway', 'Scope sway', 0, 3, 0.1, v => v.toFixed(1) + 'x'),
       ],

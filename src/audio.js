@@ -136,14 +136,6 @@ export const sfx = {
   reload(name, gun) { if (on()) foley(gun, name, ctx.currentTime); },
   // shotgun choke fully tight: a soft mechanical detent
   choke() { if (on()) { const t = ctx.currentTime; click(t, 3600, 0.16, 0.012); click(t + 0.03, 2400, 0.12, 0.015); } },
-  // sights up: cloth/sling swish + the cheek-weld tick; a scope adds a faint glassy ring as the eye finds it
-  raise(scope) {
-    if (!on()) return;
-    const t = ctx.currentTime;
-    const f = noise(t, 0.09, 'bandpass', 700, 0.9, 0.16, 0.025); f.frequency.exponentialRampToValueAtTime(1700, t + 0.08);
-    click(t + 0.075, 2100, 0.1, 0.018);
-    if (scope) tone(t + 0.08, 0.12, 'sine', 3300, 3200, 0.025);
-  },
   swap() { if (on()) { const t = ctx.currentTime; click(t, 1500, 0.2, 0.05); click(t + 0.12, 2400, 0.25, 0.03); } },
   hit(crit) {
     if (!on()) return;

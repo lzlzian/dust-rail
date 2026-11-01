@@ -32,7 +32,7 @@ All of these are in **⚙ Test bench**. Settings persist in localStorage, and op
 | # | Question | What to try |
 |---|----------|-------------|
 | 1 | Portrait framing | Rotate the phone, or switch the simulated frame. Toggle **target px** to see real on-screen sizes of heads and bodies. Change *FOV fit* and *hFOV*. **1b · Camera beats**: pan speed, the cue before a pan, arrows for off-screen enemies. |
-| 2 | Gun controls | One scheme, trackpad aim with aim-down-sights (below). Tune drag sensitivity, aim assist, recoil climb, spread pattern; sights on/off, iron-sight drag sensitivity, raise time and zoom; scope sensitivity and sway. |
+| 2 | Gun controls | One scheme, trackpad aim (below). Tune drag sensitivity, aim assist, recoil climb, spread pattern, scope sensitivity and sway. |
 | 3 | Shooting projectiles | Rockets, boss missiles, grenades and drone bolts can all be shot down. The bracket around each one is its true hit area. Tune *projectile hitbox size*, *assist bonus* and *speed*. |
 | 4 | Charge-up telegraphs | Heavies (blue cannon), snipers (red laser) and the boss beam. Turn layers off one at a time. Interrupt a charge by dealing damage; the glowing core counts double. Spawn buttons are in the panel. |
 | 5 | Juice | Drag master from 0 to 1, or isolate any of the 15 layers. Each gun has its own juice profile in `src/config.js`, and its own reload foley in `src/foley.js` (`node tools/foley-check.mjs` renders every reload to WAV + a spectrogram PNG in `shots/foley/`). |
@@ -44,17 +44,13 @@ All of these are in **⚙ Test bench**. Settings persist in localStorage, and op
 
 Nikke-style: the reticle stays wherever you left it. Touch anywhere and drag to move it relatively, like a laptop trackpad, so your thumb never covers the target. (The other schemes we tried — tap, tap-burst, offset hold & sweep, paint & release, auto-trigger, touch-to-scope — are still in commit `56b790c` if you want them back.) The reticle starts at screen centre and glides back there on every scene change (a new area, a beat pan).
 
-**Aim down sights.** Every gun except the SMG has a sight. Holding raises it: the view turns onto the reticle and zooms, the gun slides in until its sight line runs down the middle of the screen, and from then on the sight *is* the reticle; dragging turns the view. Letting go lowers it and leaves the reticle on the spot you were aiming at. Sights are data (`sight` in `src/config.js`: type, zoom, raise time, accuracy). Today they're iron sights (`iron`, the 3D gun's own notch/peep/bead) and the sniper's `scope` overlay. A red dot or holo sight would be another type.
-
 | Gun | Hold | Release | Its job |
 |-----|------|---------|---------|
-| SMG | hip fire from the reticle, instantly | stops | hoses crowds and drones; the only gun with no raise delay |
-| AR | raises the peep sight (1.5×, 0.17 s), then fires; ~half the spread while sighted, climb lifts the view | lowers | controlled mid-range |
-| Revolver | raises notch & blade (1.35×, 0.12 s), then fires | lowers | hits hard and slow, quick to the sights |
-| Shotgun | down the rib to the bead (1.15×) + **choke**: the pattern ring at the bead shrinks over 0.5 s, clicks when tight | 9 pellets at that spread; tight patterns lose less damage with range | tap = wide close blast, hold = mid-range slug |
+| SMG, AR, revolver | fires continuously | stops | SMG hoses crowds and drones, AR is controlled mid-range, revolver hits hard and slow |
+| Shotgun | **choke**: the pattern tightens over 0.5 s (reticle ring shrinks, clicks when tight) | 9 pellets at that spread; tight patterns lose less damage with range | tap = wide close blast, hold = mid-range slug |
 | Sniper | scopes in on the reticle (3.5×, sway); drag = fine aim | one piercing shot; the reticle stays on that spot | long range, weak points, lines of enemies |
 
-The bench's *Hold raises sights* switch turns the AR/revolver/shotgun back into hip-fire guns for A/B. Releasing while the pump or bolt is still cycling queues the shot. If the gun runs dry mid-hold, the sights drop for the reload and come back up by themselves if you're still holding. Ammo rides on the reticle: an arc of rounds (or a bar and count for big mags) that turns yellow when low and red on the last rounds; reloading shows a progress ring and RELOADING under the reticle. A revolver dead-eye (time slows, sweep to mark targets, release to fan them) was prototyped in commit `56b790c` and set aside as a future ability.
+Releasing while the pump or bolt is still cycling queues the shot. Ammo rides on the reticle: an arc of rounds (or a bar and count for big mags) that turns yellow when low and red on the last rounds; reloading shows a progress ring and RELOADING under the reticle. A revolver dead-eye (time slows, sweep to mark targets, release to fan them) was prototyped in commit `56b790c` and set aside as a future ability. Aim-down-sights for the AR, revolver and shotgun (hold raises the iron sights onto the reticle; the sight becomes the reticle and dragging turns the view) was built in commit `56c70b6` and rolled back: having the view jump onto the sights every time you wanted to aim, with no way to look around without firing, was too disorienting. It's there for special situations later.
 
 ## What the headless runs showed (not a substitute for thumbs on glass)
 
@@ -72,8 +68,8 @@ Measured in a 390×844 portrait viewport (iPhone 12–15 class):
 ```
 src/config.js      weapons (stats, hold behaviour, per-gun juice), persisted settings
 src/main.js        boot, frame sizing, loop, screens
-src/input.js       pointer → trackpad aim, aim-down-sights, reticle re-centring
-src/weapons.js     firing, damage, viewmodels (incl. iron sights + ADS pose), recoil, shells
+src/input.js       pointer → trackpad aim (hold to fire, or hold to aim on shotgun/sniper)
+src/weapons.js     firing, damage, viewmodels, recoil, shells
 src/combat.js      ray vs. hitbox spheres / cover boxes, screen-space aim assist
 src/enemies.js     8 enemy types incl. boss; charge-up telegraph layers
 src/projectiles.js shootable rockets/missiles/grenades/bolts, player grenade
