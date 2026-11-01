@@ -1,7 +1,7 @@
-// Final camera = rail pose + scripted beat yaw + cover duck + scope offset + aim lean + kick + trauma shake + FOV punch.
+// Final camera = rail pose + scripted beat yaw + cover duck + sight (ADS) offset + aim lean + kick + trauma shake + FOV punch.
 import * as THREE from 'three';
 import { G, clamp, damp, lerp } from './state.js';
-import { settings, WEAPONS, J } from './config.js';
+import { settings, J, sightRaise } from './config.js';
 import { camFx } from './fx.js';
 
 export const rig = { pos: new THREE.Vector3(0, 1.7, 0), quat: new THREE.Quaternion(), moving: false, speed: 0 };
@@ -67,20 +67,22 @@ export function updateCamera(rdt) {
   cam.position.add(_v);
   if (rig.moving) cam.position.y += Math.abs(Math.sin(st.t * 7)) * 0.05 * Math.min(1, rig.speed / 4);
 
-  // scope: zoom and turn towards the scoped direction
-  const scoped = G.aim.scoped;
-  st.zoom = damp(st.zoom, scoped ? 1 : 0, scoped ? 16 : 12, rdt);
-  if (scoped) {
+  // sights up: zoom and turn towards the sighted direction, at the sight's raise speed (≈90% there after `raise` s)
+  const ads = G.aim.ads, sight = G.aim.sight;
+  st.zoom = damp(st.zoom, ads ? 1 : 0, ads ? 2.3 / Math.max(0.03, sightRaise(sight)) : 12, rdt);
+  if (ads) {
     st.swayT += rdt;
-    const sway = settings.scopeSway * 0.0035 * (G.time.focus > 0 ? 0.3 : 1);
-    st.yaw = damp(st.yaw, G.aim.scopeYaw + Math.sin(st.swayT * 1.3) * sway + Math.sin(st.swayT * 2.9) * sway * 0.4, 22, rdt);
-    st.pitch = damp(st.pitch, G.aim.scopePitch + Math.sin(st.swayT * 1.7 + 1) * sway * 0.8, 22, rdt);
+    const sway = settings.scopeSway * (sight.sway ?? 0) * 0.0035 * (G.time.focus > 0 ? 0.3 : 1);
+    // recoil climb lifts the view itself while sighted (the sight stays on screen centre), and recovers the same way
+    const climb = Math.atan(G.aim.climb / ((G.view.h / 2) / Math.tan(baseVFov(aspect) * D2R / 2)));
+    st.yaw = damp(st.yaw, G.aim.adsYaw + Math.sin(st.swayT * 1.3) * sway + Math.sin(st.swayT * 2.9) * sway * 0.4, 22, rdt);
+    st.pitch = damp(st.pitch, G.aim.adsPitch + climb + Math.sin(st.swayT * 1.7 + 1) * sway * 0.8, 22, rdt);
   } else {
     st.yaw = damp(st.yaw, 0, 10, rdt); st.pitch = damp(st.pitch, 0, 10, rdt);
   }
 
   // optional lean towards the reticle (Time-Crisis style aim drift)
-  const lean = J('lean') && G.aim.visible && !scoped ? 1 : 0;
+  const lean = J('lean') && G.aim.visible && !ads ? 1 : 0;
   const nx = (G.aim.x / G.view.w) * 2 - 1, ny = (G.aim.y / G.view.h) * 2 - 1;
   st.leanX = damp(st.leanX, lean * nx * 2.2 * D2R, 4, rdt);
   st.leanY = damp(st.leanY, lean * -ny * 1.6 * D2R, 4, rdt);
@@ -100,7 +102,7 @@ export function updateCamera(rdt) {
 
   // FOV
   const base = baseVFov(aspect);
-  const zoom = WEAPONS.find(w => w.id === 'sniper').zoom;
+  const zoom = G.aim.adsZoom || 1; // kept after the sight drops so the zoom-out blends from the right magnification
   const zoomed = 2 * Math.atan(Math.tan(base * D2R / 2) / zoom) / D2R;
   const fov = THREE.MathUtils.lerp(base, zoomed, st.zoom) + camFx.fov;
   if (Math.abs(fov - cam.fov) > 1e-3 || cam.aspect !== aspect) {
@@ -108,7 +110,7 @@ export function updateCamera(rdt) {
   }
   G.view.vfov = fov;
   G.view.hfov = 2 * Math.atan(Math.tan(fov * D2R / 2) * aspect) / D2R;
-  G.view.hfovScoped = 2 * Math.atan(Math.tan(zoomed * D2R / 2) * aspect) / D2R;
+  G.view.hfovAds = 2 * Math.atan(Math.tan(zoomed * D2R / 2) * aspect) / D2R;
   G.view.focalPx = (G.view.h / 2) / Math.tan(fov * D2R / 2);
   G.view.zoom = st.zoom;
   cam.updateMatrixWorld();

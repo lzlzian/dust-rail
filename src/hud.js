@@ -385,10 +385,16 @@ export function drawOverlay(rdt, Wst, grenadeAim) {
   }
 
   // reticle
-  const aimY = G.aim.y - G.aim.climb, showReticle = !G.aim.scoped && G.view.zoom < 0.2 && G.player.alive;
+  // hip: the drawn reticle. Sighted: the gun's own sights are the reticle; only the shotgun keeps its pattern ring so
+  // you can watch the choke close
+  const aimY = G.aim.y - G.aim.climb, showReticle = !G.aim.ads && G.view.zoom < 0.2 && G.player.alive;
+  const sighted = G.view.zoom >= 0.2 && G.aim.sight && G.player.alive, scope = sighted && G.aim.sight.type === 'scope';
   if (showReticle) {
     const p = pick(G.aim.x, aimY, settings.aimAssist * 0.6);
     reticle(wpn, G.aim.x, aimY, !!(p.enemy || p.proj), Wst.reloading);
+  } else if (G.aim.ads && wpn.choke && !scope) {
+    const p = pick(w / 2, h / 2, settings.aimAssist * 0.4);
+    reticle(wpn, w / 2, h / 2, !!(p.enemy || p.proj), Wst.reloading);
   }
   // hit markers
   for (let i = items.markers.length - 1; i >= 0; i--) {
@@ -406,12 +412,10 @@ export function drawOverlay(rdt, Wst, grenadeAim) {
 
   if (G.cue) drawCue(G.cue, now);
   if (G.player.coverT > 0.02) drawCover(G.player.coverT, Wst.reloading);
-  if (G.view.zoom > 0.02) drawScope(G.view.zoom);
-  // ammo rides on the reticle (or the scope centre), where your eyes already are
-  if (G.player.alive) {
-    const scoped = G.view.zoom >= 0.2;
-    if (showReticle || scoped) drawAmmo(wpn, Wst, scoped ? w / 2 : G.aim.x, scoped ? h / 2 : aimY, rdt, scoped ? 1.5 : 1);
-  }
+  if (G.view.zoom > 0.02 && G.aim.sight?.type === 'scope') drawScope(G.view.zoom);
+  // ammo rides on the reticle (or the sight, at screen centre), where your eyes already are
+  if (sighted) drawAmmo(wpn, Wst, w / 2, h / 2, rdt, scope ? 1.5 : 1.15);
+  else if (showReticle) drawAmmo(wpn, Wst, G.aim.x, aimY, rdt, 1);
 
   // grenade aim (dragging from the button)
   if (grenadeAim) {

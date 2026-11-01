@@ -133,8 +133,9 @@ export function pick(x, y, assistPx = settings.aimAssist, maxT = 300) {
   return { o: o.clone(), d: d.clone(), t: world.t, world, assisted: false, point: o.clone().addScaledVector(d, Math.min(world.t, maxT)) };
 }
 
-// current cone (deg) for a gun: base spread + bloom, tightened by the shotgun's trackpad choke while held
+// current cone (deg) for a gun: base spread + bloom, tightened by the shotgun's choke while held and by sighting in
 export function spreadNow(w) {
   const k = w.choke && G.aim.choke != null ? G.aim.choke : 0;
-  return w.spread + ((w.choke?.min ?? w.spread) - w.spread) * k + G.aim.bloom;
+  const sighted = G.aim.ads && G.aim.sight === w.sight ? w.sight.spread ?? 1 : 1;
+  return (w.spread + ((w.choke?.min ?? w.spread) - w.spread) * k + G.aim.bloom) * sighted;
 }

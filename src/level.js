@@ -11,6 +11,7 @@ import { rig, resetLook, panTo, panning } from './camera.js';
 import { banner, setStage } from './hud.js';
 import { sfx } from './audio.js';
 import { clearFx } from './fx.js';
+import { recenterAim } from './input.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const EYE = 1.7;
@@ -338,6 +339,7 @@ export function startEncounter(i, fromPath) {
   LV.idx = i;
   resetWorldState();
   if (!fromPath) resetLook();
+  recenterAim(fromPath ? 0.5 : 0); // new area, fresh centred reticle (glides while you ride there)
   if (fromPath) {
     LV.phase = 'move'; LV.t = 0;
     LV.curve = new THREE.CatmullRomCurve3(E.path, false, 'catmullrom', 0.4);
@@ -419,7 +421,7 @@ export function updateLevel(dt) {
     }
     if (!LV.panned && LV.t >= LULL + settings.look.cueTime) {
       LV.panned = true;
-      if (turns) { const d = panTo(to.yaw); if (d) sfx.pan(d); }
+      if (turns) { const d = panTo(to.yaw); if (d) { sfx.pan(d); recenterAim(Math.min(d, 0.5)); } }
     }
     if (LV.panned && !panning()) startBeat(LV.beatIdx + 1);
     return;

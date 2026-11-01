@@ -13,7 +13,7 @@ export const G = {
   score: 0, combo: 0, comboT: 0,
   attackTokens: 0,
   cue: null,               // upcoming beat pan { dir, label, t }, drawn by the HUD
-  aim: { x: 0, y: 0, visible: false, bloom: 0, climb: 0, scoped: false, choke: null },
+  aim: { x: 0, y: 0, visible: false, bloom: 0, climb: 0, ads: false, sight: null, adsZoom: 1, adsYaw: 0, adsPitch: 0, choke: null },
   stats: null,
 };
 

@@ -5,8 +5,8 @@ import { settings, saveSettings, resetSettings, WEAPONS } from './config.js';
 import { buildSky } from './world.js';
 import { initFx, updateFx, clearFx } from './fx.js';
 import { initAudio, setVolume } from './audio.js';
-import { initWeapons, updateWeapons, updateViewmodel, layoutViewmodel, selectWeapon, resetWeapons, W, onKill, setWeaponKillHook } from './weapons.js';
-import { initInput, updateInput, cancelAim } from './input.js';
+import { initWeapons, updateWeapons, updateViewmodel, layoutViewmodel, selectWeapon, resetWeapons, W, onKill, viewmodelShown } from './weapons.js';
+import { initInput, updateInput, cancelAim, recenterAim } from './input.js';
 import { updateCamera, rig } from './camera.js';
 import { initHud, resizeOverlay, applyHudLayout, updateHudDom, drawOverlay, banner, clearHudFx, popScreenText } from './hud.js';
 import { initAbilities, updateAbilities, resetAbilities, AB, grenadeAim } from './abilities.js';
@@ -64,7 +64,7 @@ function startGame(mode) {
   }
   $('start').classList.add('hidden'); $('end').classList.add('hidden');
   G.stats = freshStats(); G.score = 0; G.combo = 0;
-  resetPlayer(); resetWeapons(); resetAbilities(); clearHudFx(); cancelAim();
+  resetPlayer(); resetWeapons(); resetAbilities(); clearHudFx(); recenterAim();
   G.mode = mode; G.paused = false;
   if (mode === 'range') startRange();
   else { rig.pos.copy(ENCOUNTERS[0].path[0]); startEncounter(0, true); }
@@ -163,7 +163,7 @@ function loop(t) {
 
   renderer.clear();
   renderer.render(G.scene, G.camera);
-  if (settings.hud.viewmodel && !G.aim.scoped && G.mode !== 'menu') { renderer.clearDepth(); renderer.render(G.vmScene, G.vmCamera); }
+  if (viewmodelShown()) { renderer.clearDepth(); renderer.render(G.vmScene, G.vmCamera); }
   updateHudDom(W, AB);
   drawOverlay(G.paused ? 0 : rdt, W, grenadeAim);
 }
